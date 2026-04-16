@@ -20,6 +20,7 @@ config/config.yaml
 # Local runtime artifacts
 manifest.jsonl
 *.log
+output/
 
 # OS
 .DS_Store

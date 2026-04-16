@@ -1,0 +1,90 @@
+# Placeholder-to-query mapping for template auto-fill.
+#
+# Each key is a placeholder name used in templates: {{key}}
+# Each value defines:
+#   query    — the question sent to Vertex AI Search / Gemini RAG
+#   doc_type — (optional) filter to a specific document category
+#
+# Placeholders NOT listed here use "smart mode":
+#   {{What is the purchase price}} → query = "What is the purchase price"
+#
+# Smart mode is great for one-off questions. Use this file when you
+# need custom phrasing, filters, or reuse across multiple templates.
+
+placeholders:
+
+  # ── Property basics ──
+  property_address:
+    query: "What is the full street address of the property including city, state and zip?"
+
+  property_owner:
+    query: "What is the name of the LLC or entity that owns this property?"
+
+  ein_number:
+    query: "What is the EIN number from the IRS notice?"
+    doc_type: legal
+
+  # ── Financial ──
+  purchase_price:
+    query: "What was the original purchase price of the property?"
+    doc_type: legal
+
+  total_renovation_budget:
+    query: "What is the total renovation budget or scope of work cost?"
+
+  latest_pl_revenue:
+    query: "What is the total revenue or income on the most recent P&L statement?"
+    doc_type: finance
+
+  latest_pl_expenses:
+    query: "What are the total expenses on the most recent P&L statement?"
+    doc_type: finance
+
+  latest_pl_net:
+    query: "What is the net income or net profit on the most recent P&L statement?"
+    doc_type: finance
+
+  bank_balance:
+    query: "What is the current available bank account balance?"
+    doc_type: finance
+
+  # ── Permits ──
+  permit_number:
+    query: "What is the building permit number?"
+    doc_type: permit
+
+  permit_status:
+    query: "What is the current status of the building permit?"
+    doc_type: permit
+
+  inspection_cost:
+    query: "How much was the most recent inspection invoice?"
+    doc_type: billing
+
+  # ── Closing / Legal ──
+  closing_date:
+    query: "What was the closing date for the property?"
+    doc_type: legal
+
+  title_company:
+    query: "What title company handled the closing?"
+    doc_type: legal
+
+  lender_name:
+    query: "Who is the lender or loan company?"
+    doc_type: legal
+
+  loan_amount:
+    query: "What is the loan amount?"
+    doc_type: legal
+
+  appraised_value:
+    query: "What is the appraised value of the property?"
+    doc_type: finance
+
+  # ── Contractors ──
+  contractor_name:
+    query: "Who is the general contractor or main contractor?"
+
+  contractor_contact:
+    query: "What is the contractor's phone number or email address?"
