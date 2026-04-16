@@ -35,75 +35,51 @@
 </style>
 </head>
 <body class="bg-gray-50 flex">
-
-<!-- Overlay for mobile sidebar -->
 <div id="overlay" class="overlay" onclick="toggleSidebar()"></div>
-
-<!-- Sidebar -->
 <div id="sidebar" class="sidebar bg-gray-900 flex-shrink-0 flex flex-col h-full">
-  <!-- Logo + company -->
   <div class="p-4 border-b border-gray-700">
     <div class="flex items-center gap-2 mb-2">
       {% if logo_url %}<img src="{{ logo_url }}" class="w-8 h-8 rounded" alt="Logo">{% else %}<div class="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-xs text-white">AI</div>{% endif %}
-      <div>
-        <h1 class="text-sm font-semibold text-white leading-tight">{{ company }}</h1>
-        <p class="text-xs text-gray-500">AI Document Search</p>
-      </div>
+      <div><h1 class="text-sm font-semibold text-white leading-tight">{{ company }}</h1><p class="text-xs text-gray-500">AI Document Search</p></div>
     </div>
     <button onclick="newSession()" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium border border-gray-600 transition">+ New Session</button>
   </div>
-  <!-- Session list -->
   <div id="sess-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
 </div>
-
-<!-- Main area -->
 <div class="flex-1 flex flex-col min-w-0 h-full">
-  <!-- Header -->
   <header class="bg-gray-800 text-white px-4 py-2.5 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-2">
       <button class="md:hidden px-2 py-1 bg-gray-700 rounded text-xs" onclick="toggleSidebar()">☰</button>
       <select id="fp" class="sel text-gray-700 text-xs"><option value="">All properties</option>{% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select>
       <select id="fd" class="sel text-gray-700 text-xs"><option value="">All types</option>{% for d in doc_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select>
     </div>
-    <button onclick="toggleTpl()" id="tpl-toggle" class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-xs font-medium">📄 Templates</button>
+    <button onclick="toggleTpl()" class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-xs font-medium">📄 Templates</button>
   </header>
-
-  <!-- Template Panel -->
   <div id="tpl-panel" class="tpl-panel px-4 py-3">
     <div class="max-w-4xl mx-auto">
       <div id="tpl-step1">
         <div class="flex flex-col md:flex-row gap-2 items-start md:items-end">
-          <div class="flex-1 min-w-0"><label class="text-xs font-semibold text-yellow-800 block mb-1">Template</label>
-            <select id="tpl-select" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Loading...</option></select></div>
-          <div class="w-full md:w-44"><label class="text-xs font-semibold text-yellow-800 block mb-1">Property</label>
-            <select id="tpl-prop" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Default</option>{% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+          <div class="flex-1 min-w-0"><label class="text-xs font-semibold text-yellow-800 block mb-1">Template</label><select id="tpl-select" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Loading...</option></select></div>
+          <div class="w-full md:w-44"><label class="text-xs font-semibold text-yellow-800 block mb-1">Property</label><select id="tpl-prop" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Default</option>{% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
           <button id="tpl-fill-btn" onclick="fillFields()" class="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700">🔍 Fill with AI</button>
-        </div>
-        <div id="tpl-fill-status" class="mt-2 text-xs"></div>
+        </div><div id="tpl-fill-status" class="mt-2 text-xs"></div>
       </div>
       <div id="tpl-step2" style="display:none">
-        <div class="flex items-center justify-between mb-2">
-          <div><h3 id="tpl-title" class="text-sm font-bold text-yellow-800"></h3><p id="tpl-subtitle" class="text-xs text-yellow-600"></p></div>
-          <button onclick="backToStep1()" class="text-xs text-yellow-700 underline">< Back</button></div>
+        <div class="flex items-center justify-between mb-2"><div><h3 id="tpl-title" class="text-sm font-bold text-yellow-800"></h3><p id="tpl-subtitle" class="text-xs text-yellow-600"></p></div><button onclick="backToStep1()" class="text-xs text-yellow-700 underline">< Back</button></div>
         <div id="tpl-fields" class="space-y-2 mb-3 overflow-y-auto pr-1" style="max-height:25vh"></div>
         <div class="flex flex-col md:flex-row gap-2 items-start md:items-center pt-2 border-t border-yellow-200">
           <input id="tpl-email" type="email" placeholder="Email PDF to..." class="flex-1 px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white min-w-0">
-          <div class="flex gap-2">
-            <button id="tpl-pdf-btn" onclick="genPDF(false)" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">⬇ PDF</button>
-            <button id="tpl-email-btn" onclick="genPDF(true)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">✉ Email</button></div>
-        </div>
-        <div id="tpl-pdf-status" class="mt-2 text-xs"></div>
+          <div class="flex gap-2"><button id="tpl-pdf-btn" onclick="genPDF(false)" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">⬇ PDF</button><button id="tpl-email-btn" onclick="genPDF(true)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">✉ Email</button></div>
+        </div><div id="tpl-pdf-status" class="mt-2 text-xs"></div>
       </div>
     </div>
   </div>
-
   <!-- Chat -->
   <div id="chat" class="chat-area px-3 md:px-6 lg:px-10 py-4">
     <div class="max-w-4xl mx-auto flex flex-col justify-center items-center h-full msg-enter" id="welcome">
-      {% if logo_url %}<img src="{{ logo_url }}" class="w-16 h-16 rounded-xl mb-3" alt="Logo">{% else %}
       <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-3">
         <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-      </div>{% endif %}
+      </div>
       <h2 class="text-lg font-semibold text-gray-700 mb-1">Ask anything about your documents</h2>
       <p class="text-gray-500 text-xs mb-3">Or click <strong>📄 Templates</strong> to generate branded PDF reports.</p>
       <div class="flex flex-wrap justify-center gap-2">
@@ -113,10 +89,7 @@
       </div>
     </div>
   </div>
-
   <div id="toast-box"></div>
-
-  <!-- Input bar -->
   <div class="input-bar border-t border-gray-200 bg-white px-3 md:px-6 lg:px-10 py-2.5">
     <div class="max-w-4xl mx-auto flex gap-2">
       <input id="qi" type="text" placeholder="Ask a question..." class="flex-1 px-3 py-2 rounded-xl border border-gray-300 text-sm" onkeydown="if(event.key==='Enter')sendQ()">
@@ -124,171 +97,43 @@
     </div>
   </div>
 </div>
-
 <script>
-const emailOk={{ 'true' if email_enabled else 'false' }};
-let pn=0; const SC={};
-
-// ── Session management (localStorage) ──
+const emailOk={{ 'true' if email_enabled else 'false' }};let pn=0;const SC={};
 function loadSessions(){try{return JSON.parse(localStorage.getItem('smb_sess')||'[]');}catch(e){return [];}}
 function saveSessions(s){try{localStorage.setItem('smb_sess',JSON.stringify(s));}catch(e){}}
 function em(){try{return localStorage.getItem('smb_em')||'';}catch(e){return '';}}
 function emSave(v){try{localStorage.setItem('smb_em',v);}catch(e){}}
-
-let sessions=loadSessions();
-let activeId=null;
-
-function newSession(){
-  const id='s'+Date.now();
-  sessions.unshift({id,label:'New Session',property:'',firstQuery:'',created:Date.now(),messages:[],vertexSession:null});
-  saveSessions(sessions);
-  switchSession(id);
-}
-
-function switchSession(id){
-  activeId=id;
-  renderSessions();
-  renderChat();
-}
-
+let sessions=loadSessions(),activeId=null;
+function newSession(){const id='s'+Date.now();sessions.unshift({id,label:'New Session',property:'',firstQuery:'',created:Date.now(),messages:[],vertexSession:null});saveSessions(sessions);switchSession(id);}
+function switchSession(id){activeId=id;renderSessions();renderChat();}
 function getActive(){return sessions.find(s=>s.id===activeId)||null;}
-
-function renderSessions(){
-  const el=document.getElementById('sess-list'); el.innerHTML='';
-  for(const s of sessions){
-    const div=document.createElement('div');
-    div.className='sess'+(s.id===activeId?' active':'');
-    div.onclick=()=>switchSession(s.id);
-    const prop=s.property||'';
-    const q=s.firstQuery||'New Session';
-    div.innerHTML='<div class="sess-label">'+(prop?prop+': ':'')+esc(q.substring(0,40))+'</div>'
-      +'<div class="sess-sub">'+new Date(s.created).toLocaleDateString()+'</div>';
-    el.appendChild(div);
-  }
-}
-
-function renderChat(){
-  const s=getActive(); const chat=document.getElementById('chat');
-  if(!s||!s.messages.length){
-    // Show welcome
-    chat.innerHTML=document.getElementById('welcome-tpl').innerHTML;
-    return;
-  }
-  chat.innerHTML='';
-  for(const m of s.messages){
-    const el=document.createElement('div');
-    el.className='max-w-4xl mx-auto mb-3 msg-enter';
-    el.innerHTML=m.html;
-    chat.appendChild(el);
-  }
-  chat.scrollTop=chat.scrollHeight;
-}
-
-function saveMsg(role,html){
-  const s=getActive(); if(!s) return;
-  const wrapper=role==='user'
-    ?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>'
-    :'<div class="flex justify-start w-full">'+html+'</div>';
-  s.messages.push({role,html:wrapper});
-  if(role==='user'&&!s.firstQuery){s.firstQuery=html.substring(0,50);s.property=document.getElementById('fp').value;s.label=s.firstQuery;renderSessions();}
-  saveSessions(sessions);
-}
-
-// ── UI helpers ──
+function renderSessions(){const el=document.getElementById('sess-list');el.innerHTML='';for(const s of sessions){const div=document.createElement('div');div.className='sess'+(s.id===activeId?' active':'');div.onclick=()=>switchSession(s.id);const q=s.firstQuery||'New Session';div.innerHTML='<div class="sess-label">'+(s.property?s.property+': ':'')+esc(q.substring(0,40))+'</div><div class="sess-sub">'+new Date(s.created).toLocaleDateString()+'</div>';el.appendChild(div);}}
+function renderChat(){const s=getActive();const chat=document.getElementById('chat');if(!s||!s.messages.length){chat.innerHTML=document.getElementById('welcome-tpl').innerHTML;return;}chat.innerHTML='';for(const m of s.messages){const el=document.createElement('div');el.className='max-w-4xl mx-auto mb-3 msg-enter';el.innerHTML=m.html;chat.appendChild(el);}chat.scrollTop=chat.scrollHeight;}
+function saveMsg(role,html){const s=getActive();if(!s)return;const w=role==='user'?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>':'<div class="flex justify-start w-full">'+html+'</div>';s.messages.push({role,html:w});if(role==='user'&&!s.firstQuery){s.firstQuery=html.substring(0,50);s.property=document.getElementById('fp').value;s.label=s.firstQuery;renderSessions();}saveSessions(sessions);}
 function ge(id){return document.getElementById(id);}
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function toast(msg,ok){const el=document.createElement('div');el.className='toast '+(ok?'bg-green-600 text-white':'bg-red-600 text-white');el.textContent=msg;ge('toast-box').appendChild(el);setTimeout(()=>el.remove(),4000);}
 function toggleSidebar(){ge('sidebar').classList.toggle('open');ge('overlay').classList.toggle('show');}
-
-function addMsg(role,html){
-  const w=ge('welcome');if(w)w.remove();
-  const el=document.createElement('div');el.className='max-w-4xl mx-auto mb-3 msg-enter';
-  el.innerHTML=role==='user'?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>':'<div class="flex justify-start w-full">'+html+'</div>';
-  ge('chat').appendChild(el);ge('chat').scrollTop=ge('chat').scrollHeight;return el;
-}
+function addMsg(role,html){const w=ge('welcome');if(w)w.remove();const el=document.createElement('div');el.className='max-w-4xl mx-auto mb-3 msg-enter';el.innerHTML=role==='user'?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>':'<div class="flex justify-start w-full">'+html+'</div>';ge('chat').appendChild(el);ge('chat').scrollTop=ge('chat').scrollHeight;return el;}
 function showDots(){return addMsg('bot','<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm inline-block"><div class="flex gap-1.5"><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div></div></div>');}
 function fmt(t){let h=esc(t);h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');h=h.replace(/\*(.+?)\*/g,'<em>$1</em>');h=h.replace(/\n\n/g,'</p><p>');h=h.replace(/\n/g,'<br>');return '<div class="answer-text"><p>'+h+'</p></div>';}
-
 function ask(q){ge('qi').value=q;sendQ();}
-
-function buildResp(aHtml,sources){
-  pn++;const pid='p'+pn;SC[pid]=sources||[];let panel='';
-  if(sources&&sources.length){let docs='';
-    for(let i=0;i<sources.length;i++){const s=sources[i],t=s.title||'?',tag=[s.property,s.category||s.doc_type].filter(Boolean).join('/'),uri=s.uri||'';
-      docs+='<div class="di mb-1.5"><p class="font-medium text-gray-700 truncate leading-tight text-xs">'+esc(t)+'</p>'+(uri?'<div class="flex gap-1 mt-1"><button class="db bg-green-50 text-green-700 border border-green-200" onclick="dl(\''+esc(uri)+'\')">⬇</button>'+(emailOk?'<button class="db bg-orange-50 text-orange-700 border border-orange-200" onclick="emOne(\''+pid+'\','+i+')">✉</button>':'')+'</div>':'')+'</div>';}
-    panel='<div class="sp p-2.5 mt-3 md:mt-0 md:ml-3 w-full md:w-56 flex-shrink-0"><p class="font-bold text-blue-700 uppercase tracking-wider mb-2" style="font-size:9px">'+sources.length+' docs</p>'+(emailOk?'<div class="mb-2"><input id="em-'+pid+'" type="email" placeholder="email" value="'+esc(em())+'" class="w-full px-2 py-1 border border-blue-200 rounded bg-white text-xs mb-1"><button id="eb-'+pid+'" onclick="emAll(\''+pid+'\')" class="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium">✉ Email all</button></div>':'')+'<div class="overflow-y-auto" style="max-height:200px">'+docs+'</div></div>';}
-  return '<div class="flex flex-col md:flex-row items-start w-full"><div class="bg-white border border-gray-200 px-3 py-3 rounded-2xl rounded-bl-md text-sm text-gray-800 shadow-sm flex-1 min-w-0 w-full">'+aHtml+'</div>'+panel+'</div>';
-}
-
+function buildResp(aHtml,sources){pn++;const pid='p'+pn;SC[pid]=sources||[];let panel='';if(sources&&sources.length){let docs='';for(let i=0;i<sources.length;i++){const s=sources[i],t=s.title||'?',uri=s.uri||'';docs+='<div class="di mb-1.5"><p class="font-medium text-gray-700 truncate leading-tight text-xs">'+esc(t)+'</p>'+(uri?'<div class="flex gap-1 mt-1"><button class="db bg-green-50 text-green-700 border border-green-200" onclick="dl(\''+esc(uri)+'\')">⬇</button>'+(emailOk?'<button class="db bg-orange-50 text-orange-700 border border-orange-200" onclick="emOne(\''+pid+'\','+i+')">✉</button>':'')+'</div>':'')+'</div>';}panel='<div class="sp p-2.5 mt-3 md:mt-0 md:ml-3 w-full md:w-56 flex-shrink-0"><p class="font-bold text-blue-700 uppercase tracking-wider mb-2" style="font-size:9px">'+sources.length+' docs</p>'+(emailOk?'<div class="mb-2"><input id="em-'+pid+'" type="email" placeholder="email" value="'+esc(em())+'" class="w-full px-2 py-1 border border-blue-200 rounded bg-white text-xs mb-1"><button id="eb-'+pid+'" onclick="emAll(\''+pid+'\')" class="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium">✉ Email all</button></div>':'')+'<div class="overflow-y-auto" style="max-height:200px">'+docs+'</div></div>';}return '<div class="flex flex-col md:flex-row items-start w-full"><div class="bg-white border border-gray-200 px-3 py-3 rounded-2xl rounded-bl-md text-sm text-gray-800 shadow-sm flex-1 min-w-0 w-full">'+aHtml+'</div>'+panel+'</div>';}
 async function dl(uri){try{const r=await fetch('/api/download?uri='+encodeURIComponent(uri));const d=await r.json();d.url?window.open(d.url,'_blank'):toast(d.error,false);}catch(e){toast('Failed',false);}}
 function getEm(pid){const inp=ge('em-'+pid);const to=(inp?inp.value:'').trim();if(!to){toast('Enter email',false);return null;}emSave(to);return to;}
 async function emOne(pid,idx){const to=getEm(pid);if(!to)return;const s=SC[pid][idx];try{const r=await fetch('/api/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,docs:[{uri:s.uri,title:s.title}]})});const d=await r.json();d.sent?toast('Sent',true):toast(d.error,false);}catch(e){toast('Failed',false);}}
 async function emAll(pid){const to=getEm(pid);if(!to)return;const docs=SC[pid].filter(s=>s.uri).map(s=>({uri:s.uri,title:s.title}));const btn=ge('eb-'+pid);btn.textContent='...';btn.disabled=true;try{const r=await fetch('/api/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,docs})});const d=await r.json();btn.textContent='✉ Email all';btn.disabled=false;d.sent?toast(d.doc_count+' sent',true):toast(d.error,false);}catch(e){btn.textContent='✉ Email all';btn.disabled=false;}}
-
-async function sendQ(){
-  const inp=ge('qi');const q=inp.value.trim();if(!q)return;inp.value='';
-  if(!activeId)newSession();
-  addMsg('user',q); saveMsg('user',q);
-  const dots=showDots();
-  const s=getActive();
-  try{
-    const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,property:ge('fp').value,doc_type:ge('fd').value,session:s?s.vertexSession:null})});
-    const data=await r.json();dots.remove();
-    if(data.error){const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(data.error)+'</div>';addMsg('bot',h);saveMsg('bot',h);return;}
-    if(data.session&&s){s.vertexSession=data.session;saveSessions(sessions);}
-    const html=buildResp(fmt(data.text||'No answer.'),data.sources);
-    addMsg('bot',html);saveMsg('bot',html);
-  }catch(err){dots.remove();const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(err.message)+'</div>';addMsg('bot',h);saveMsg('bot',h);}
-}
-
-// ── Templates ──
+async function sendQ(){const inp=ge('qi');const q=inp.value.trim();if(!q)return;inp.value='';if(!activeId)newSession();addMsg('user',q);saveMsg('user',q);const dots=showDots();const s=getActive();try{const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,property:ge('fp').value,doc_type:ge('fd').value,session:s?s.vertexSession:null})});const data=await r.json();dots.remove();if(data.error){const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(data.error)+'</div>';addMsg('bot',h);saveMsg('bot',h);return;}if(data.session&&s){s.vertexSession=data.session;saveSessions(sessions);}const html=buildResp(fmt(data.text||'No answer.'),data.sources);addMsg('bot',html);saveMsg('bot',html);}catch(err){dots.remove();const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(err.message)+'</div>';addMsg('bot',h);saveMsg('bot',h);}}
 let tplOpen=false,currentDraft={};
 function toggleTpl(){tplOpen=!tplOpen;ge('tpl-panel').classList.toggle('open',tplOpen);if(tplOpen)loadTpls();}
 function backToStep1(){ge('tpl-step1').style.display='';ge('tpl-step2').style.display='none';}
 async function loadTpls(){try{const r=await fetch('/api/templates');const d=await r.json();const sel=ge('tpl-select');sel.innerHTML='<option value="">-- Select --</option>';for(const t of d.templates)sel.innerHTML+='<option value="'+t.id+'">'+esc(t.title)+' ('+t.fields+')</option>';ge('tpl-email').value=em();}catch(e){}}
-async function fillFields(){
-  const tpl=ge('tpl-select').value;if(!tpl){toast('Select a template',false);return;}
-  const btn=ge('tpl-fill-btn');btn.disabled=true;btn.innerHTML='<span class="spinner">...</span> Filling (1-2 min)';ge('tpl-fill-status').innerHTML='<span class="text-yellow-700">Reading your documents...</span>';
-  try{const r=await fetch('/api/draft/fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:tpl,property:ge('tpl-prop').value})});
-    const d=await r.json();btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='';
-    if(d.error){ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}
-    currentDraft=d;showEditStep(d);
-  }catch(e){btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}
-}
-function showEditStep(d){
-  ge('tpl-step1').style.display='none';ge('tpl-step2').style.display='';
-  ge('tpl-title').textContent=ge('tpl-select').options[ge('tpl-select').selectedIndex].text;
-  ge('tpl-subtitle').textContent=d.resolved+'/'+d.total+' filled. Edit, then download.';
-  const c=ge('tpl-fields');c.innerHTML='';
-  for(const f of d.fields){const div=document.createElement('div');div.className='field-row '+(f.ok?'ok':'fail')+' flex gap-2 items-start';
-    div.innerHTML='<div class="flex-shrink-0 w-28 pt-1"><label class="text-xs font-medium text-gray-700 truncate block"><span class="'+(f.ok?'text-green-600':'text-red-500')+'">'+(f.ok?'Y':'X')+'</span> '+esc(f.name)+'</label></div><textarea data-field="'+esc(f.name)+'" class="flex-1 px-2 py-1 border rounded text-gray-800" rows="2">'+esc(f.answer)+'</textarea>';
-    c.appendChild(div);}
-}
+async function fillFields(){const tpl=ge('tpl-select').value;if(!tpl){toast('Select a template',false);return;}const btn=ge('tpl-fill-btn');btn.disabled=true;btn.innerHTML='<span class="spinner">...</span> Filling (1-2 min)';ge('tpl-fill-status').innerHTML='<span class="text-yellow-700">Reading your documents...</span>';try{const r=await fetch('/api/draft/fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:tpl,property:ge('tpl-prop').value})});const d=await r.json();btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='';if(d.error){ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}currentDraft=d;showEditStep(d);}catch(e){btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}}
+function showEditStep(d){ge('tpl-step1').style.display='none';ge('tpl-step2').style.display='';ge('tpl-title').textContent=ge('tpl-select').options[ge('tpl-select').selectedIndex].text;ge('tpl-subtitle').textContent=d.resolved+'/'+d.total+' filled. Edit, then download.';const c=ge('tpl-fields');c.innerHTML='';for(const f of d.fields){const div=document.createElement('div');div.className='field-row '+(f.ok?'ok':'fail')+' flex gap-2 items-start';div.innerHTML='<div class="flex-shrink-0 w-28 pt-1"><label class="text-xs font-medium text-gray-700 truncate block"><span class="'+(f.ok?'text-green-600':'text-red-500')+'">'+(f.ok?'Y':'X')+'</span> '+esc(f.name)+'</label></div><textarea data-field="'+esc(f.name)+'" class="flex-1 px-2 py-1 border rounded text-gray-800" rows="2">'+esc(f.answer)+'</textarea>';c.appendChild(div);}}
 function collectF(){const f={};ge('tpl-fields').querySelectorAll('textarea[data-field]').forEach(t=>{f[t.dataset.field]=t.value;});return f;}
-async function genPDF(send){
-  const fields=collectF();const email=send?ge('tpl-email').value.trim():'';
-  if(send&&!email){toast('Enter email',false);return;}if(email)emSave(email);
-  const bid=send?'tpl-email-btn':'tpl-pdf-btn';const btn=ge(bid);const orig=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner">...</span>';ge('tpl-pdf-status').innerHTML='';
-  try{const r=await fetch('/api/draft/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:currentDraft.template_id,property:currentDraft.property,fields,email})});
-    const d=await r.json();btn.disabled=false;btn.textContent=orig;
-    if(d.error){ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}
-    let h='<a href="'+d.download_url+'" target="_blank" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium inline-block">⬇ Download PDF</a>';
-    if(d.emailed_to)h+=' <span class="text-blue-600 text-xs">Sent to '+esc(d.emailed_to)+'</span>';
-    ge('tpl-pdf-status').innerHTML=h;
-    if(!send)window.open(d.download_url,'_blank');
-  }catch(e){btn.disabled=false;btn.textContent=orig;ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}
-}
-
-// ── Init ──
-// Store welcome HTML as a template so we can restore it.
-const welEl=ge('welcome');
-const welTpl=document.createElement('template');welTpl.id='welcome-tpl';
-if(welEl)welTpl.innerHTML=welEl.outerHTML;
-document.body.appendChild(welTpl);
-
-// Load last session or create first one.
-if(sessions.length){activeId=sessions[0].id;}else{newSession();}
-renderSessions();renderChat();loadTpls();
+async function genPDF(send){const fields=collectF();const email=send?ge('tpl-email').value.trim():'';if(send&&!email){toast('Enter email',false);return;}if(email)emSave(email);const bid=send?'tpl-email-btn':'tpl-pdf-btn';const btn=ge(bid);const orig=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner">...</span>';ge('tpl-pdf-status').innerHTML='';try{const r=await fetch('/api/draft/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:currentDraft.template_id,property:currentDraft.property,fields,email})});const d=await r.json();btn.disabled=false;btn.textContent=orig;if(d.error){ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}let h='<a href="'+d.download_url+'" target="_blank" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium inline-block">⬇ Download PDF</a>';if(d.emailed_to)h+=' <span class="text-blue-600 text-xs">Sent to '+esc(d.emailed_to)+'</span>';ge('tpl-pdf-status').innerHTML=h;if(!send)window.open(d.download_url,'_blank');}catch(e){btn.disabled=false;btn.textContent=orig;ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}}
+const welEl=ge('welcome');const welTpl=document.createElement('template');welTpl.id='welcome-tpl';if(welEl)welTpl.innerHTML=welEl.outerHTML;document.body.appendChild(welTpl);
+if(sessions.length){activeId=sessions[0].id;}else{newSession();}renderSessions();renderChat();loadTpls();
 </script>
 </body>
 </html>
