@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Secrets — NEVER commit these
+.env
+service-account*.json
+credentials.json
+*token.json
+*client_secret*.json
+*.key
+
+# Generated config (template lives at config/config.yaml.example)
+config/config.yaml
+
+# Local runtime artifacts
+manifest.jsonl
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Prior/unrelated work in this directory — not part of this project
+HARRIS_DEPLOYMENT/
+vertex-ai-search-starter/
+*.old

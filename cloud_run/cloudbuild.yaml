@@ -1,0 +1,44 @@
+# Optional — build via Cloud Build instead of `gcloud run deploy --source .`.
+# Run from the repo root:
+#    gcloud builds submit --config cloud_run/cloudbuild.yaml .
+
+substitutions:
+  _SERVICE: smb-sync
+  _REGION: us-central1
+  _REPO: smb
+  _SA_SHORT: madison-sync-sa
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - cloud_run/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --region=${_REGION}
+      - --no-allow-unauthenticated
+      - --service-account=${_SA_SHORT}@$PROJECT_ID.iam.gserviceaccount.com
+      - --timeout=1800
+      - --memory=1Gi
+      - --cpu=2
+      - --max-instances=1
+      - --concurrency=1
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+
+options:
+  logging: CLOUD_LOGGING_ONLY
