@@ -1,6 +1,4 @@
-# ============================================================================
 # CONFIG TEMPLATE — install.ps1 copies this to config.yaml and fills values.
-# ============================================================================
 
 project:
   id: your-gcp-project-id
@@ -19,17 +17,14 @@ data_store:
   id: smb-docs
   display_name: SMB Documents
   industry_vertical: GENERIC
-  solution_types:
-    - SOLUTION_TYPE_CHAT
-    - SOLUTION_TYPE_SEARCH
+  solution_types: [SOLUTION_TYPE_CHAT, SOLUTION_TYPE_SEARCH]
   content_config: CONTENT_REQUIRED
 
 engine:
   id: smb-search-app
   display_name: SMB Intelligent Search
   search_tier: SEARCH_TIER_ENTERPRISE
-  search_add_ons:
-    - SEARCH_ADD_ON_LLM
+  search_add_ons: [SEARCH_ADD_ON_LLM]
 
 metadata:
   category_folders:
@@ -49,13 +44,22 @@ metadata:
     - { pattern: "p&l|statement|bank|appraisal|balance",   doc_type: finance }
     - { pattern: "contract|closing|deed|title|ein|entity|llc|sow", doc_type: legal }
 
+cloud_run:
+  service_name: smb-sync
+  region: us-central1
+  memory: 1Gi
+  cpu: 2
+  timeout: 1800
+  max_instances: 1
+  poll_interval_minutes: 60        # 15, 30, 60, 120, 360, 1440
+  scheduler_job_name: smb-sync-cron
+
 connectors:
   drive:
     enabled: false
     root_folder_id:
     mirror_as: Properties
     export_workspace_as: pdf
-
   gmail:
     enabled: false
     client_secret_path: client_secret.json
@@ -64,14 +68,11 @@ connectors:
     default_property: _inbox
     index_body: true
     index_attachments: true
-
   onedrive:
     enabled: false
-
   local_files:
     enabled: false
     path:
     mirror_as: Properties
-
   csv:
     enabled: false
