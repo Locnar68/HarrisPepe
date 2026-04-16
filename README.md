@@ -1,188 +1,166 @@
 # Vertex AI SMB Bootstrapper
 
-A complete AI-powered search pipeline for small-to-medium businesses. Connects Google Drive (and, in Phase 2, Gmail / OneDrive / local files / CSVs) into a single searchable knowledge base backed by Vertex AI Search + Gemini.
+AI-powered search for small-to-medium businesses. Connects Google Drive, Gmail, local files (and more) into a single searchable knowledge base using Vertex AI Search + Gemini RAG.
 
-**Status: Phase 1 — Visual-first RAG** ✅ Shipped.
-**Phase 2 — Connector breadth + custom schema.** 🚧 In progress.
+**Current release: Phase 2** — multi-turn sessions, web UI, Gmail connector, Cloud Run auto-sync.
 
 ---
 
-## For Harris — Quick Start (Windows / PowerShell)
+## Quick Start (Windows / PowerShell)
 
-### 1. Install prerequisites (one-time)
-
-Run this block in **PowerShell as Administrator**:
+### Prerequisites
 
 ```powershell
-# Git
-winget install --id Git.Git -e --silent
-
-# GitHub CLI
-winget install --id GitHub.cli -e --silent
-
-# Python 3.12 (skip if you already have 3.10+)
-winget install --id Python.Python.3.12 -e --silent
-
-# Google Cloud SDK
-winget install --id Google.CloudSDK -e --silent
+# Install these (skip any you already have)
+# Git:       https://git-scm.com/downloads
+# Python:    https://www.python.org/downloads/  (3.10+)
+# gcloud:    https://cloud.google.com/sdk/docs/install
 ```
 
-Close and re-open PowerShell after these install (so `$PATH` picks them up).
-
-### 2. Sign into GitHub
+### Clone + install
 
 ```powershell
-gh auth login
-# Pick: GitHub.com  →  HTTPS  →  Login with web browser
-```
-
-### 3. Choose a local directory and clone
-
-Pick any folder on your machine where you want the code to live.
-
-```powershell
-# Example — change the path to wherever you want
-cd C:\dev
-gh repo clone <OWNER>/<REPO-NAME>
-cd <REPO-NAME>
-```
-
-Replace `<OWNER>/<REPO-NAME>` with the actual values (the owner sharing this with you will give them to you).
-
-### 4. Run the installer
-
-```powershell
+cd C:\dev                              # or wherever you want
+git clone https://github.com/Locnar68/HarrisPepe.git
+cd HarrisPepe
 .\install.ps1
 ```
 
-It will:
+The installer prompts for: company name, GCP project, Drive folder ID, Gmail setup, sync interval. It creates the service account, bucket, data store, and search engine automatically.
 
-1. Verify Python + gcloud are installed
-2. Create a `.venv` and install Python dependencies
-3. Run `gcloud auth login` if you're not signed in
-4. **Prompt you for**: GCP project ID, business name, bucket name, Drive folder ID, etc.
-5. Create the service account, GCS bucket, Vertex AI Search data store, and search engine
-6. Print the SA email you need to share the Drive folder with
+### Share the Drive folder
 
-### 5. Share the Drive folder with the service account
+After install, share your Google Drive folder with the service account email (printed at the end of install.ps1). Role: **Viewer**.
 
-After install.ps1 completes, it will print something like:
-
-```
-  IMPORTANT — share your Drive folder with the service account:
-    1. Open https://drive.google.com/drive/folders/<FOLDER_ID>
-    2. Click Share
-    3. Paste:  <business>-sync-sa@<project>.iam.gserviceaccount.com
-    4. Role:   Viewer
-    5. Click Share
-```
-
-Do that step in your browser. The SA cannot read anything else in Drive — only the folder you explicitly share.
-
-### 6. Run the pipeline
+### Run the pipeline
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 
-python scripts\doctor.py           # sanity check — should be all green
-python scripts\sync.py --dry-run   # preview what would sync from Drive
-python scripts\sync.py             # pull files into GCS
-python scripts\index.py            # extract metadata + import to Vertex AI
-python scripts\query.py "..."      # ask questions
+python scripts\doctor.py              # verify everything is green
+python scripts\sync.py --dry-run      # preview what would sync
+python scripts\sync.py                # pull files from Drive → GCS
+python scripts\index.py --full        # extract metadata + import to Vertex AI
+python scripts\query.py "How much was the electrical inspection?"
 ```
 
-Example queries:
+### Launch the web UI
 
 ```powershell
-python scripts\query.py "How much did we pay the electrician?"
-python scripts\query.py --mode=search "permit"
-python scripts\query.py "Summarize the closing documents"
+python scripts\web.py
 ```
+
+Opens at `http://localhost:5000`. Accessible on your LAN at `http://<your-ip>:5000` (port 5000 bound to `0.0.0.0`).
+
+Features:
+- Chat interface with Gemini RAG answers
+- Multi-turn conversations (follow-up questions work)
+- **Source documents box** below every answer — shows exactly which files were used
+- **Download** button — generates a 1-hour signed URL
+- **Email** button — modal with a To: field (remembers the last-used address), opens your email client with a download link
+- Property + doc_type filter dropdowns
+- Answer / Search mode toggle
+
+### Deploy automated sync (Cloud Run)
+
+```powershell
+python scripts\deploy.py              # build container + deploy + schedule
+python scripts\deploy.py --trigger    # manually run one sync now
+python scripts\deploy.py --logs       # watch output
+python scripts\deploy.py --teardown   # delete service + scheduler
+```
+
+Sync interval is configurable in `config/config.yaml`:
+```yaml
+cloud_run:
+  poll_interval_minutes: 60           # 15, 30, 60, 120, 360
+```
+
+Change interval without redeploying: `python scripts\deploy.py --schedule-only`
 
 ---
 
-## What this sets up
-
-- A Python virtual environment with all dependencies
-- A Google Cloud service account (short name you pick) with the minimum roles
-- A Google Cloud Storage bucket for mirroring source data
-- A Vertex AI Search Data Store (Enterprise tier, CHAT + SEARCH) with Gemini LLM add-on
-- A Search Engine attached to the Data Store
-- An ingestion pipeline that walks the mirror bucket, extracts metadata, and imports documents
-- A query CLI with both classical search and Gemini grounded-answer modes
-
-## Core concept
-
-**The folder path is the logic.** We do NOT rely on AI to interpret chaos.
-
-Instead:
-
-- Data is structured (or classified by filename heuristic)
-- Metadata is derived deterministically from folders
-- Vertex AI performs retrieval over structured inputs
-- Gemini reads the retrieved docs (including scanned PDFs and images, multimodally) at query time
-
-### Example
-
-Input path: `Properties/15-Northridge/06-Invoices/invoice1.pdf`
-
-Becomes:
-
-- `property = 15-Northridge`
-- `category = Invoices`
-- `doc_type = billing`
-
-Then queries like `--property=15-Northridge --doc-type=billing "how much"` drill straight to that file. (Custom schema for faceted filters is a Phase 2 deliverable.)
-
-## Folder structure
+## Architecture
 
 ```
-/vertex-ai-search
-│
-├── install.ps1          # Interactive installer (start here)
-├── bootstrap/           # Idempotent GCP resource creation
-├── connectors/          # Pluggable data sources (Drive, local, Gmail stub, etc.)
+  Data Sources (Drive / Gmail / Local / OneDrive / CSV)
+        │
+        │   connectors/*.py → scripts/sync.py
+        ▼
+  GCS mirror bucket
+        │
+        │   metadata/extractor.py → scripts/index.py
+        ▼
+  Vertex AI Search (Enterprise + Gemini LLM)
+        │
+        │   vertex/answer.py → scripts/query.py or web UI
+        ▼
+  Natural language answers with source citations
+```
+
+## Folder Structure
+
+```
+├── install.ps1          # Interactive installer
+├── bootstrap/           # GCP resource creation (APIs, SA, bucket, data store, engine, schema)
+├── connectors/          # Pluggable data sources
+│   ├── drive.py         # ✅ Google Drive (SA folder-share)
+│   ├── gmail.py         # ✅ Gmail (per-user OAuth)
+│   ├── local_files.py   # ✅ Local filesystem
+│   ├── onedrive.py      # 🧱 Stub
+│   └── csv_import.py    # 🧱 Stub
 ├── ingestion/           # Manifest building + ImportDocuments
 ├── metadata/            # Path → tag extractor + heuristic fallback
-├── vertex/              # Search + answer query surface
-├── scripts/             # CLI entry points (bootstrap / sync / index / query / doctor / ops)
-├── core/                # Shared config + client factories
-├── cloud_run/           # Hourly sync job container (Phase 2)
+├── vertex/              # Search + answer with session support
+├── web/                 # Flask chat UI with email integration
+├── scripts/             # CLI: bootstrap, sync, index, query, doctor, deploy, web, ops
+├── cloud_run/           # Container for automated hourly sync
 ├── config/              # config.yaml (generated by install.ps1)
-└── documents/           # Architecture, runbook, roadmap, troubleshooting
+└── documents/           # 9 markdown docs: architecture, runbook, roadmap, troubleshooting
 ```
 
 ## Connectors
 
-| Connector     | Status         | Notes                                      |
-|---------------|----------------|--------------------------------------------|
-| Google Drive  | ✅ Shipped     | Personal Gmail supported via SA share       |
-| Local files   | ✅ Shipped     | Mirror any local directory tree             |
-| Gmail         | 🧱 Phase 2     | See `documents/04-CONNECTOR_GUIDE.md`       |
-| OneDrive      | 🧱 Phase 2     | rclone-based                                |
-| CSV           | 🧱 Phase 2     | Row-as-document synthesis                   |
+| Source       | Status     | Auth model                      |
+|--------------|------------|---------------------------------|
+| Google Drive | ✅ Shipped | Service account + folder share   |
+| Gmail        | ✅ Shipped | Per-user OAuth (Desktop client)  |
+| Local files  | ✅ Shipped | Filesystem path                  |
+| OneDrive     | 🧱 Stub   | rclone                           |
+| CSV          | 🧱 Stub   | Direct file path                 |
 
-## Full documentation
+## CLI Reference
 
-In `documents/`:
+| Command | Purpose |
+|---|---|
+| `python scripts\bootstrap.py` | Create GCP resources (idempotent) |
+| `python scripts\sync.py` | Pull data from enabled connectors |
+| `python scripts\index.py --full` | Build manifest + import to Vertex AI |
+| `python scripts\query.py "..."` | Ask questions (answer or search mode) |
+| `python scripts\web.py` | Launch web chat UI |
+| `python scripts\deploy.py` | Deploy to Cloud Run + Scheduler |
+| `python scripts\doctor.py` | Health check |
+| `python scripts\ops.py` | Check import operation status |
 
-- `00-VISION.md` — product vision
-- `01-ARCHITECTURE.md` — pipeline diagram + separation of concerns
-- `02-FOLDER_STRUCTURE.md` — rules for data-owner (what goes where)
-- `03-HARRIS_HANDOVER.md` — complete operational runbook
-- `04-CONNECTOR_GUIDE.md` — how to implement a new connector
-- `05-METADATA_SCHEMA.md` — tagging, filters, extensions
-- `06-DEPLOYMENT.md` — Cloud Run + Scheduler deployment
-- `07-TROUBLESHOOTING.md` — symptom → fix table
-- `08-ROADMAP.md` — phased plan
+## Configuration
 
-## Hard rules
+`config/config.yaml` is generated by `install.ps1` and gitignored. Template at `config/config.yaml.example`.
 
-- Do **NOT** overwrite Data Store IDs. Create `v2`, `v3` if you need schema changes.
-- Always validate with `python scripts\doctor.py` before querying.
-- Folder names must be hyphenated, no spaces.
-- Never commit `service-account.json`, `.env`, or `config/config.yaml` — all gitignored.
+Key sections:
+- `project` — GCP project + region
+- `connectors` — which sources are enabled + their config
+- `metadata` — category folders, heuristic rules, default property
+- `cloud_run` — service name, region, poll interval
+
+## Security
+
+These files are **gitignored** and must never be committed:
+- `service-account.json` — GCP SA key
+- `.env` — credentials path + project id
+- `config/config.yaml` — may contain folder IDs
+- `gmail_token.json` — OAuth refresh token
+- `client_secret.json` — OAuth client secret
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT
