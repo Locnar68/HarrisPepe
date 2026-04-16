@@ -1,12 +1,7 @@
-"""Gemini-grounded answer over the Vertex AI Search engine.
-
-Supports stateless (one-shot) and session-based (multi-turn) conversations.
-Pass a session name from a previous response to enable follow-ups like
-"which document was that from?" or "tell me more about the second one."
-"""
+"""Gemini-grounded answer with session support + URI extraction."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from core import conversational_client
 from core.config import Config
@@ -18,15 +13,11 @@ class Answer:
     text: str
     citations: list[dict]
     sources: list[dict]
-    session: str | None = None       # session resource name for follow-ups
+    session: str | None = None
 
 
-def answer(cfg: Config,
-           query: str,
-           property_: str | None = None,
-           doc_type: str | None = None,
-           category: str | None = None,
-           session: str | None = None,
+def answer(cfg: Config, query: str, property_=None, doc_type=None,
+           category=None, session=None,
            model_version: str = "gemini-2.0-flash-001/answer_gen/v1") -> Answer:
     from google.cloud import discoveryengine_v1 as de
 
@@ -39,8 +30,7 @@ def answer(cfg: Config,
         session=session or None,
         search_spec=de.AnswerQueryRequest.SearchSpec(
             search_params=de.AnswerQueryRequest.SearchSpec.SearchParams(
-                max_return_results=10,
-                filter=filter_expr,
+                max_return_results=10, filter=filter_expr,
             ),
         ),
         answer_generation_spec=de.AnswerQueryRequest.AnswerGenerationSpec(
@@ -55,11 +45,7 @@ def answer(cfg: Config,
     resp = client.answer_query(request=req)
     a = resp.answer
     text = a.answer_text or ""
-
-    # Extract session name for multi-turn follow-ups.
-    session_name = None
-    if resp.session:
-        session_name = resp.session.name
+    session_name = resp.session.name if resp.session else None
 
     citations = []
     for c in a.citations:
@@ -74,17 +60,17 @@ def answer(cfg: Config,
         di = ref.unstructured_document_info
         if di:
             sd = dict(di.struct_data) if di.struct_data else {}
+            # Try multiple URI sources.
+            uri = getattr(di, 'uri', '') or ''
+            if not uri:
+                uri = sd.get('source_uri', '') or sd.get('link', '')
             sources.append({
                 "reference_id": ref.reference_id,
                 "title": di.title or sd.get("filename", ""),
                 "property": sd.get("property", ""),
                 "category": sd.get("category", ""),
-                "uri": di.uri if hasattr(di, "uri") else "",
+                "doc_type": sd.get("doc_type", ""),
+                "uri": uri,
             })
 
-    return Answer(
-        text=text,
-        citations=citations,
-        sources=sources,
-        session=session_name,
-    )
+    return Answer(text=text, citations=citations, sources=sources, session=session_name)

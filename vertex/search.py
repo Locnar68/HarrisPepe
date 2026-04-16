@@ -18,10 +18,8 @@ class Hit:
     struct: dict[str, Any]
 
 
-def build_filter(property_: str | None = None,
-                 doc_type: str | None = None,
-                 category: str | None = None) -> str:
-    clauses: list[str] = []
+def build_filter(property_=None, doc_type=None, category=None) -> str:
+    clauses = []
     if property_:
         clauses.append(f'property: ANY("{property_}")')
     if doc_type:
@@ -31,12 +29,40 @@ def build_filter(property_: str | None = None,
     return " AND ".join(clauses)
 
 
-def search(cfg: Config,
-           query: str,
-           property_: str | None = None,
-           doc_type: str | None = None,
-           category: str | None = None,
-           page_size: int = 10) -> list[Hit]:
+def _extract_uri(doc) -> str:
+    """Try every possible location the GCS URI might be stored."""
+    # 1. content.uri (set during import via JSONL content field)
+    if doc.content:
+        uri = getattr(doc.content, 'uri', '') or ''
+        if uri:
+            return uri
+
+    # 2. derived_struct_data.link (Vertex puts source URI here for unstructured docs)
+    if doc.derived_struct_data:
+        dsd = dict(doc.derived_struct_data)
+        link = dsd.get('link', '') or dsd.get('uri', '') or dsd.get('source_uri', '')
+        if link:
+            return link
+
+    # 3. struct_data.source_uri (our custom field, added in manifest.py)
+    if doc.struct_data:
+        sd = dict(doc.struct_data)
+        su = sd.get('source_uri', '')
+        if su:
+            return su
+
+    # 4. derived_struct_data.source_uri
+    if doc.derived_struct_data:
+        dsd = dict(doc.derived_struct_data)
+        su = dsd.get('source_uri', '')
+        if su:
+            return su
+
+    return ''
+
+
+def search(cfg: Config, query: str, property_=None, doc_type=None,
+           category=None, page_size: int = 10) -> list[Hit]:
     from google.cloud import discoveryengine_v1 as de
 
     client = search_client(cfg)
@@ -50,11 +76,19 @@ def search(cfg: Config,
     )
     resp = client.search(request=req)
 
-    hits: list[Hit] = []
+    hits = []
     for i, r in enumerate(resp.results, 1):
         doc = r.document
-        sd = dict(doc.struct_data) if doc.struct_data else {}
-        uri = doc.content.uri if doc.content and doc.content.uri else ""
+
+        # Get metadata — prefer struct_data, fall back to derived_struct_data
+        sd = {}
+        if doc.struct_data:
+            sd = dict(doc.struct_data)
+        elif doc.derived_struct_data:
+            sd = dict(doc.derived_struct_data)
+
+        uri = _extract_uri(doc)
+
         hits.append(Hit(
             rank=i,
             property=str(sd.get("property", "")),

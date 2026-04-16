@@ -1,4 +1,4 @@
-"""Build a JSONL manifest that Vertex AI Search's ImportDocuments reads."""
+"""Build a JSONL manifest for ImportDocuments."""
 from __future__ import annotations
 
 import hashlib
@@ -21,39 +21,37 @@ class Record:
 
 
 def build_manifest(cfg: Config, log=print) -> list[Record]:
-    """Walk the mirror bucket, classify each object, produce Records."""
     gcs = storage_client(cfg)
     bucket = gcs.bucket(cfg.bucket)
     prefix = f"{cfg.mirror_prefix}/"
 
     records: list[Record] = []
-    skipped = {"ext": 0, "classify": 0}
+    skipped = 0
 
     for blob in bucket.list_blobs(prefix=prefix):
         if blob.name.endswith("/"):
             continue
         tags = classify(cfg, blob.name)
         if tags is None:
-            skipped["classify"] += 1
+            skipped += 1
             continue
 
         uri = f"gs://{cfg.bucket}/{blob.name}"
         doc_id = hashlib.sha1(uri.encode("utf-8")).hexdigest()
-
         mtime = (blob.updated or datetime.now(timezone.utc)).isoformat()
-        struct = {**tags, "updated": mtime}
-
         mime = blob.content_type or "application/octet-stream"
-        records.append(
-            Record(
-                id=doc_id,
-                structData=struct,
-                content={"mimeType": mime, "uri": uri},
-            )
-        )
 
-    log(f"  built manifest: {len(records)} records, "
-        f"{skipped['classify']} skipped (unclassified)")
+        # Store the GCS URI in structData so it survives the API round-trip.
+        # Search results return structData but not always content.uri.
+        struct = {**tags, "updated": mtime, "source_uri": uri}
+
+        records.append(Record(
+            id=doc_id,
+            structData=struct,
+            content={"mimeType": mime, "uri": uri},
+        ))
+
+    log(f"  built manifest: {len(records)} records, {skipped} skipped (unclassified)")
     return records
 
 
@@ -73,7 +71,6 @@ def upload_manifest(cfg: Config, records: list[Record], log=print) -> str:
         buf.write(json.dumps(asdict(r), separators=(",", ":")))
         buf.write("\n")
     body = buf.getvalue().encode("utf-8")
-
     gcs = storage_client(cfg)
     bucket = gcs.bucket(cfg.bucket)
     blob = bucket.blob(f"{cfg.manifest_prefix}/manifest.jsonl")
