@@ -1,4 +1,4 @@
-"""Web UI — Flask app with fallback search on no-answer."""
+"""Web UI — Flask app with Gmail compose links instead of mailto."""
 from __future__ import annotations
 
 import os
@@ -58,18 +58,12 @@ def api_query():
                  "filename": h.filename, "uri": h.uri} for h in hits
             ]})
 
-        # Answer mode — with fallback.
         a = do_answer(c, query, property_=prop, doc_type=dtype, session=session)
         sources = [{"reference_id": s.get("reference_id",""), "title": s.get("title",""),
                      "property": s.get("property",""), "category": s.get("category",""),
-                     "uri": s.get("uri","")} for s in a.sources]
+                     "doc_type": s.get("doc_type",""), "uri": s.get("uri","")} for s in a.sources]
 
-        no_answer = (not a.text
-                     or "summary could not be generated" in a.text.lower()
-                     or "could not be generated" in a.text.lower())
-
-        # If Gemini couldn't summarize OR returned no sources, run a search
-        # so the user always sees which documents were found.
+        no_answer = (not a.text or "could not be generated" in a.text.lower())
         if no_answer or not sources:
             hits = do_search(c, query, property_=prop, doc_type=dtype, page_size=10)
             search_sources = [{"reference_id": str(h.rank), "title": h.filename,
@@ -78,26 +72,18 @@ def api_query():
             if not sources:
                 sources = search_sources
             elif search_sources:
-                # Merge: keep answer sources, add any search hits not already listed.
                 known = {s["title"] for s in sources}
                 for ss in search_sources:
                     if ss["title"] not in known:
                         sources.append(ss)
-
             text = a.text if not no_answer else (
-                "I found relevant documents but couldn't generate a narrative summary. "
-                "The matching files are listed below — you can download or email them directly."
-            )
+                "I found relevant documents but couldn't generate a summary. "
+                "The matching files are listed below.")
         else:
             text = a.text
 
-        return jsonify({
-            "mode": "answer",
-            "text": text,
-            "sources": sources,
-            "citations": a.citations,
-            "session": a.session,
-        })
+        return jsonify({"mode": "answer", "text": text, "sources": sources,
+                        "citations": a.citations, "session": a.session})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -120,26 +106,52 @@ def api_download():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/email_link")
-def api_email_link():
-    uri = req.args.get("uri", "")
-    filename = req.args.get("filename", "document")
-    prop = req.args.get("property", "")
-    if not uri.startswith("gs://"):
-        return jsonify({"error": "invalid uri"}), 400
+@app.route("/api/email_docs", methods=["POST"])
+def api_email_docs():
+    """Generate download links for all docs and return a Gmail compose URL."""
+    data = req.get_json(force=True)
+    to = data.get("to", "").strip()
+    uris = data.get("uris", [])       # list of {uri, title}
+
+    if not to:
+        return jsonify({"error": "email address required"}), 400
+    if not uris:
+        return jsonify({"error": "no documents to email"}), 400
+
     c = cfg()
-    parts = uri.replace("gs://", "").split("/", 1)
-    if len(parts) != 2:
-        return jsonify({"error": "malformed uri"}), 400
-    try:
-        gcs = storage_client(c)
-        dl = gcs.bucket(parts[0]).blob(parts[1]).generate_signed_url(
-            version="v4", expiration=timedelta(hours=24), method="GET")
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    subject = urllib.parse.quote(f"Document: {filename} — {prop}")
-    body = urllib.parse.quote(f"File: {filename}\nProperty: {prop}\n\nDownload (24h):\n{dl}\n")
-    return jsonify({"mailto": f"mailto:?subject={subject}&body={body}", "download_url": dl})
+    gcs = storage_client(c)
+    lines = []
+
+    for item in uris:
+        uri = item.get("uri", "")
+        title = item.get("title", "Document")
+        if not uri.startswith("gs://"):
+            continue
+        parts = uri.replace("gs://", "").split("/", 1)
+        if len(parts) != 2:
+            continue
+        try:
+            url = gcs.bucket(parts[0]).blob(parts[1]).generate_signed_url(
+                version="v4", expiration=timedelta(hours=24), method="GET")
+            lines.append(f"{title}\n{url}")
+        except Exception:
+            lines.append(f"{title}\n(link generation failed)")
+
+    if not lines:
+        return jsonify({"error": "could not generate any download links"}), 500
+
+    subject = f"{len(lines)} document{'s' if len(lines)>1 else ''} from AI Search"
+    body = "Here are the documents from your search:\n\n" + "\n\n".join(lines) + "\n\nLinks expire in 24 hours.\n"
+
+    # Gmail compose URL — opens a new compose window in the browser.
+    gmail_url = (
+        "https://mail.google.com/mail/?view=cm&fs=1"
+        f"&to={urllib.parse.quote(to)}"
+        f"&su={urllib.parse.quote(subject)}"
+        f"&body={urllib.parse.quote(body)}"
+    )
+
+    return jsonify({"gmail_url": gmail_url, "doc_count": len(lines)})
 
 
 def create_app():

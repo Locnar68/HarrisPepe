@@ -9,30 +9,30 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
   .chat-area { overflow-y: auto; scroll-behavior: smooth; }
   .msg-enter { animation: slideUp 0.3s ease-out; }
-  @keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes pulse { 0%,80%,100% { opacity:0.3; } 40% { opacity:1; } }
+  @keyframes slideUp { from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);} }
+  @keyframes pulse { 0%,80%,100%{opacity:0.3;}40%{opacity:1;} }
   .dot { animation: pulse 1.4s infinite; }
   .dot:nth-child(2) { animation-delay: 0.2s; }
   .dot:nth-child(3) { animation-delay: 0.4s; }
   .doc-item:hover { border-color: #93c5fd; }
-  #query-input:focus { outline: none; box-shadow: 0 0 0 2px #2563eb; }
-  .sel { background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
-  .mbtn { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; }
-  .mbtn.on { background: #2563eb; color: white; }
-  .mbtn:not(.on) { background: #f1f5f9; color: #475569; }
-  .answer-text p { margin-bottom: 0.5rem; }
-  .answer-text strong { font-weight: 600; }
-  .sources-panel { background: #f0f7ff; border: 1.5px solid #bfdbfe; border-radius: 10px; font-size: 12px; }
-  .doc-item { background: white; border: 1px solid #dbeafe; border-radius: 6px; padding: 6px 8px; transition: all 0.15s; }
-  .dbtn { font-size: 10px; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
-  .header-controls { display: none; }
-  .header-controls.open { display: flex; }
-  @media(min-width:768px) { .header-controls { display: flex !important; } .menu-toggle { display: none !important; } }
+  #query-input:focus { outline:none; box-shadow:0 0 0 2px #2563eb; }
+  .sel { background:white; border:1px solid #e2e8f0; border-radius:6px; padding:5px 8px; font-size:12px; }
+  .mbtn { padding:4px 12px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; }
+  .mbtn.on { background:#2563eb; color:white; }
+  .mbtn:not(.on) { background:#f1f5f9; color:#475569; }
+  .answer-text p { margin-bottom:0.5rem; }
+  .answer-text strong { font-weight:600; }
+  .sources-panel { background:#f0f7ff; border:1.5px solid #bfdbfe; border-radius:10px; font-size:12px; }
+  .doc-item { background:white; border:1px solid #dbeafe; border-radius:6px; padding:6px 8px; transition:all 0.15s; }
+  .dbtn { font-size:10px; padding:3px 7px; border-radius:4px; cursor:pointer; }
+  .header-controls { display:none; }
+  .header-controls.open { display:flex; }
+  @media(min-width:768px) { .header-controls{display:flex!important;} .menu-toggle{display:none!important;} }
+  .email-status { font-size:11px; padding:4px 8px; border-radius:6px; margin-top:4px; }
 </style>
 </head>
 <body class="bg-gray-50 h-screen flex flex-col">
 
-<!-- Header -->
 <header class="bg-gray-800 text-white px-4 md:px-6 py-2.5 flex-shrink-0">
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
@@ -45,10 +45,9 @@
     <div class="flex items-center gap-2">
       <button onclick="newChat()" class="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium">+ New</button>
       <span id="badge" class="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 hidden"></span>
-      <button class="menu-toggle px-2 py-1 bg-gray-700 rounded-lg text-xs md:hidden" onclick="toggleMenu()">☰ Filters</button>
+      <button class="menu-toggle px-2 py-1 bg-gray-700 rounded-lg text-xs md:hidden" onclick="toggleMenu()">☰</button>
     </div>
   </div>
-  <!-- Filters — collapsed on mobile, always visible on md+ -->
   <div id="header-controls" class="header-controls flex-wrap gap-2 mt-2 md:mt-1 items-center">
     <select id="filter-property" class="sel flex-1 md:flex-none text-gray-700">
       <option value="">All properties</option>
@@ -65,7 +64,6 @@
   </div>
 </header>
 
-<!-- Chat -->
 <div id="chat-area" class="chat-area flex-1 px-3 md:px-6 lg:px-10 py-4">
   <div class="max-w-5xl mx-auto text-center py-8 md:py-12 msg-enter" id="welcome">
     <div class="w-12 h-12 md:w-16 md:h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
@@ -81,7 +79,6 @@
   </div>
 </div>
 
-<!-- Input -->
 <div class="flex-shrink-0 border-t border-gray-200 bg-white px-3 md:px-6 lg:px-10 py-2.5">
   <div class="max-w-5xl mx-auto flex gap-2">
     <input id="query-input" type="text" placeholder="Ask a question..."
@@ -94,32 +91,29 @@
 <script>
 let mode='answer', session=null, pn=0;
 const src={};
+function savedEm(){try{return localStorage.getItem('smb_em')||'';}catch(e){return '';}}
+function saveEm(v){try{localStorage.setItem('smb_em',v);}catch(e){}}
+function toggleMenu(){document.getElementById('header-controls').classList.toggle('open');}
+function setMode(m){mode=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));}
+function newChat(){session=null;location.reload();}
+function ask(q){document.getElementById('query-input').value=q;sendQuery();}
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function scroll(){const a=document.getElementById('chat-area');a.scrollTop=a.scrollHeight;}
+function badge(){const b=document.getElementById('badge');if(session){b.classList.remove('hidden','bg-gray-700','text-gray-400');b.classList.add('bg-green-700','text-green-300');b.textContent='●';}else b.classList.add('hidden');}
 
-function savedEm() { try{return localStorage.getItem('smb_em')||'';}catch(e){return '';} }
-function saveEm(v) { try{localStorage.setItem('smb_em',v);}catch(e){} }
-function toggleMenu() { document.getElementById('header-controls').classList.toggle('open'); }
-function setMode(m) { mode=m; document.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on',b.dataset.mode===m)); }
-function newChat() { session=null; location.reload(); }
-function ask(q) { document.getElementById('query-input').value=q; sendQuery(); }
-function esc(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
-function scroll() { const a=document.getElementById('chat-area'); a.scrollTop=a.scrollHeight; }
-function badge() { const b=document.getElementById('badge'); if(session){b.classList.remove('hidden','bg-gray-700','text-gray-400');b.classList.add('bg-green-700','text-green-300');b.textContent='●';}else b.classList.add('hidden'); }
-
-function addMsg(role, html) {
-  const w=document.getElementById('welcome'); if(w) w.remove();
+function addMsg(role,html){
+  const w=document.getElementById('welcome');if(w)w.remove();
   const el=document.createElement('div');
   el.className='max-w-5xl mx-auto mb-3 md:mb-4 msg-enter';
-  el.innerHTML = role==='user'
-    ? '<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 md:px-4 py-2 md:py-2.5 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>'
-    : '<div class="flex justify-start w-full">'+html+'</div>';
-  document.getElementById('chat-area').appendChild(el);
-  scroll(); return el;
+  el.innerHTML=role==='user'
+    ?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 md:px-4 py-2 md:py-2.5 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>'
+    :'<div class="flex justify-start w-full">'+html+'</div>';
+  document.getElementById('chat-area').appendChild(el);scroll();return el;
 }
-function dots() {
+function showDots(){
   return addMsg('bot','<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm shadow-sm inline-block"><div class="flex gap-1.5"><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div></div></div>');
 }
-
-function fmt(text) {
+function fmt(text){
   let h=esc(text);
   h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
   h=h.replace(/\*(.+?)\*/g,'<em>$1</em>');
@@ -128,83 +122,95 @@ function fmt(text) {
   return '<div class="answer-text"><p>'+h+'</p></div>';
 }
 
-function buildResp(ansHtml, sources) {
-  pn++;
-  const pid='p'+pn;
+function buildResp(ansHtml,sources){
+  pn++;const pid='p'+pn;
   src[pid]=sources||[];
   let panel='';
-  if(sources && sources.length) {
+  if(sources&&sources.length){
     let docs='';
-    for(const s of sources) {
+    for(const s of sources){
       const t=s.title||s.filename||'(untitled)';
       const tag=[s.property,s.category||s.doc_type].filter(Boolean).join(' / ');
       const uri=s.uri||'';
       docs+='<div class="doc-item mb-1.5">'
         +'<p class="font-medium text-gray-700 truncate leading-tight" title="'+esc(t)+'">📎 '+esc(t)+'</p>'
         +(tag?'<p class="text-gray-400 mt-0.5" style="font-size:10px">'+esc(tag)+'</p>':'')
-        +(uri?'<div class="flex gap-1 mt-1"><button class="dbtn bg-green-50 text-green-700 border border-green-200 hover:bg-green-100" onclick="dl(this)" data-uri="'+esc(uri)+'" data-name="'+esc(t)+'">⬇ Download</button></div>':'')
+        +(uri?'<div class="flex gap-1 mt-1"><button class="dbtn bg-green-50 text-green-700 border border-green-200 hover:bg-green-100" onclick="dl(this)" data-uri="'+esc(uri)+'">⬇ Download</button></div>':'')
         +'</div>';
     }
     panel='<div class="sources-panel p-3 mt-3 md:mt-0 md:ml-3 w-full md:w-72 md:min-w-min flex-shrink-0">'
       +'<p class="font-bold text-blue-700 uppercase tracking-wider mb-2" style="font-size:10px">📄 '+sources.length+' doc'+(sources.length>1?'s':'')+' used</p>'
       +'<div class="mb-2">'
-      +'<input id="em-'+pid+'" type="email" placeholder="email@company.com" value="'+esc(savedEm())+'" class="w-full px-2 py-1.5 border border-blue-200 rounded bg-white text-xs mb-1">'
-      +'<button onclick="emailAll(\''+pid+'\')" class="w-full px-2 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition">✉ Email these documents</button>'
+      +'<input id="em-'+pid+'" type="email" placeholder="recipient@company.com" value="'+esc(savedEm())+'" class="w-full px-2 py-1.5 border border-blue-200 rounded bg-white text-xs mb-1">'
+      +'<button id="embtn-'+pid+'" onclick="emailDocs(\''+pid+'\')" class="w-full px-2 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition">✉ Email these documents</button>'
+      +'<div id="emstatus-'+pid+'"></div>'
       +'</div>'
       +'<div class="overflow-y-auto" style="max-height:250px">'+docs+'</div>'
       +'</div>';
   }
-  // flex-col on mobile, flex-row on md+
   return '<div class="flex flex-col md:flex-row items-start w-full">'
     +'<div class="bg-white border border-gray-200 px-3 md:px-4 py-3 rounded-2xl rounded-bl-md text-sm text-gray-800 shadow-sm flex-1 min-w-0 w-full">'+ansHtml+'</div>'
-    +panel
-    +'</div>';
+    +panel+'</div>';
 }
 
-async function dl(btn) {
-  try { const r=await fetch('/api/download?uri='+encodeURIComponent(btn.dataset.uri)); const d=await r.json(); d.url?window.open(d.url,'_blank'):alert(d.error); }
-  catch(e) { alert('Failed: '+e.message); }
+async function dl(btn){
+  try{const r=await fetch('/api/download?uri='+encodeURIComponent(btn.dataset.uri));const d=await r.json();d.url?window.open(d.url,'_blank'):alert(d.error);}
+  catch(e){alert('Failed: '+e.message);}
 }
 
-async function emailAll(pid) {
+async function emailDocs(pid){
   const inp=document.getElementById('em-'+pid);
+  const btn=document.getElementById('embtn-'+pid);
+  const status=document.getElementById('emstatus-'+pid);
   const to=(inp?inp.value:'').trim();
-  if(!to){alert('Enter an email address');if(inp)inp.focus();return;}
+  if(!to){status.innerHTML='<p class="email-status bg-red-50 text-red-600">Enter an email address</p>';inp.focus();return;}
   saveEm(to);
-  const ss=src[pid]||[];
-  if(!ss.length){alert('No documents');return;}
-  const btn=inp.nextElementSibling;
-  const orig=btn.textContent;
-  btn.textContent='⏳ Generating links...'; btn.disabled=true;
-  let lines=[];
-  for(const s of ss) {
-    if(!s.uri) continue;
-    try { const r=await fetch('/api/download?uri='+encodeURIComponent(s.uri)); const d=await r.json(); if(d.url) lines.push((s.title||'Document')+'\n'+d.url); } catch(e){}
+
+  const sources=src[pid]||[];
+  const uris=sources.filter(s=>s.uri).map(s=>({uri:s.uri,title:s.title||'Document'}));
+  if(!uris.length){status.innerHTML='<p class="email-status bg-yellow-50 text-yellow-700">No downloadable documents</p>';return;}
+
+  btn.textContent='⏳ Generating links...';btn.disabled=true;
+  status.innerHTML='';
+
+  try{
+    const resp=await fetch('/api/email_docs',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:to,uris:uris}),
+    });
+    const data=await resp.json();
+    btn.textContent='✉ Email these documents';btn.disabled=false;
+
+    if(data.gmail_url){
+      window.open(data.gmail_url,'_blank');
+      status.innerHTML='<p class="email-status bg-green-50 text-green-700">✓ Gmail opened with '+data.doc_count+' document link'+(data.doc_count>1?'s':'')+'</p>';
+    } else {
+      status.innerHTML='<p class="email-status bg-red-50 text-red-600">'+(data.error||'Failed')+'</p>';
+    }
+  }catch(e){
+    btn.textContent='✉ Email these documents';btn.disabled=false;
+    status.innerHTML='<p class="email-status bg-red-50 text-red-600">'+esc(e.message)+'</p>';
   }
-  btn.textContent=orig; btn.disabled=false;
-  if(!lines.length){alert('Could not generate links');return;}
-  const subj=encodeURIComponent(lines.length+' document'+(lines.length>1?'s':'')+' from AI Search');
-  const body=encodeURIComponent('Here are the documents:\n\n'+lines.join('\n\n')+'\n\nLinks expire in 1 hour.\n');
-  window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+subj+'&body='+body;
 }
 
-async function sendQuery() {
+async function sendQuery(){
   const inp=document.getElementById('query-input');
-  const q=inp.value.trim(); if(!q) return;
-  inp.value=''; addMsg('user',q);
-  const d=dots();
-  try {
+  const q=inp.value.trim();if(!q)return;
+  inp.value='';addMsg('user',q);
+  const d=showDots();
+  try{
     const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,mode:mode,property:document.getElementById('filter-property').value,doc_type:document.getElementById('filter-doctype').value,session:session})});
-    const data=await resp.json(); d.remove();
+    const data=await resp.json();d.remove();
     if(data.error){addMsg('bot','<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(data.error)+'</div>');return;}
     if(data.session){session=data.session;badge();}
-    if(data.mode==='search') {
+    if(data.mode==='search'){
       const ss=(data.results||[]).map(r=>({title:r.filename,property:r.property,category:r.doc_type,uri:r.uri}));
       addMsg('bot',buildResp(ss.length?'<p class="text-gray-600">Found '+ss.length+' documents.</p>':'<p class="text-gray-500">No results.</p>',ss));
-    } else {
+    }else{
       addMsg('bot',buildResp(fmt(data.text||'No answer could be generated.'),data.sources));
     }
-  } catch(err) { d.remove(); addMsg('bot','<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(err.message)+'</div>'); }
+  }catch(err){d.remove();addMsg('bot','<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(err.message)+'</div>');}
 }
 </script>
 </body>
