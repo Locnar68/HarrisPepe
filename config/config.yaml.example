@@ -1,8 +1,23 @@
-# CONFIG TEMPLATE — install.ps1 copies this to config.yaml and fills values.
+# CONFIG TEMPLATE — install.ps1 generates config.yaml from this.
+# Copy to config/config.yaml and fill in values, or run install.ps1.
 
 project:
   id: your-gcp-project-id
   location: global
+
+# Company branding — appears on PDFs and the web UI header.
+company:
+  name: "Your Company Name"
+  phone: "(555) 123-4567"
+  email: info@yourcompany.com
+  address: "City, State"
+  website: www.yourcompany.com
+  tagline: "Your tagline here"
+  logo: assets/logo.jpg          # relative to repo root
+
+# Admin dashboard password.
+admin:
+  password: "0714"
 
 gcs:
   bucket: your-project-mirror
@@ -10,21 +25,29 @@ gcs:
   manifest_prefix: _manifests
 
 service_account:
-  email: sync-sa@your-gcp-project-id.iam.gserviceaccount.com
+  email: sync-sa@your-project.iam.gserviceaccount.com
   key_path: service-account.json
 
 data_store:
-  id: smb-docs
-  display_name: SMB Documents
+  id: company-docs
+  display_name: Company Documents
   industry_vertical: GENERIC
   solution_types: [SOLUTION_TYPE_CHAT, SOLUTION_TYPE_SEARCH]
   content_config: CONTENT_REQUIRED
 
 engine:
-  id: smb-search-app
-  display_name: SMB Intelligent Search
+  id: company-search
+  display_name: Company Intelligent Search
   search_tier: SEARCH_TIER_ENTERPRISE
   search_add_ons: [SEARCH_ADD_ON_LLM]
+
+# Silent email via Gmail SMTP.
+# Setup: https://myaccount.google.com/apppasswords
+email:
+  sender: you@gmail.com
+  app_password: PASTE_APP_PASSWORD_HERE
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
 
 metadata:
   category_folders:
@@ -35,24 +58,25 @@ metadata:
     "07-Photos":      image
     "09-Email":       email
   properties: []
-  heuristic_classification: false
+  heuristic_classification: true
   default_property: null
   heuristic_rules:
-    - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$",  doc_type: image   }
-    - { pattern: "^inv[_\\s-]|invoice|receipt|bill",       doc_type: billing }
-    - { pattern: "permit|inspection|code|zoning",          doc_type: permit  }
+    - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$", doc_type: image }
+    - { pattern: "^inv[_\\s-]|invoice|receipt|bill",      doc_type: billing }
+    - { pattern: "permit|inspection|code|zoning",          doc_type: permit }
     - { pattern: "p&l|statement|bank|appraisal|balance",   doc_type: finance }
-    - { pattern: "contract|closing|deed|title|ein|entity|llc|sow", doc_type: legal }
+    - { pattern: "contract|closing|deed|title|ein|entity",  doc_type: legal }
+    - { pattern: ".",                                       doc_type: document }
 
 cloud_run:
-  service_name: smb-sync
+  service_name: company-sync
   region: us-central1
   memory: 1Gi
   cpu: 2
   timeout: 1800
   max_instances: 1
-  poll_interval_minutes: 60        # 15, 30, 60, 120, 360, 1440
-  scheduler_job_name: smb-sync-cron
+  poll_interval_minutes: 60
+  scheduler_job_name: company-sync-cron
 
 connectors:
   drive:
