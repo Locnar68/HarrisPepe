@@ -1,28 +1,26 @@
 # ============================================================================
-# CONFIG TEMPLATE — generic Vertex AI SMB Bootstrapper config.
-# install.ps1 copies this file to config.yaml and fills in your answers.
-# You can also hand-copy and edit: `cp config/config.yaml.example config/config.yaml`
+# CONFIG TEMPLATE — install.ps1 copies this to config.yaml and fills values.
 # ============================================================================
 
 project:
-  id: your-gcp-project-id           # REQUIRED — your GCP project id
-  location: global                  # global | us | eu  (Discovery Engine region)
+  id: your-gcp-project-id
+  location: global
 
 gcs:
-  bucket: your-project-mirror       # MUST be globally unique; install.ps1 suggests <project>-mirror
-  mirror_prefix: data               # top-level folder in the bucket for ingested data
-  manifest_prefix: _manifests       # where the JSONL manifest is staged
+  bucket: your-project-mirror
+  mirror_prefix: data
+  manifest_prefix: _manifests
 
 service_account:
   email: sync-sa@your-gcp-project-id.iam.gserviceaccount.com
-  key_path: service-account.json    # relative to repo root, or absolute
+  key_path: service-account.json
 
 data_store:
-  id: smb-docs                      # STABLE — never rename; delete+recreate with -v2 if needed
+  id: smb-docs
   display_name: SMB Documents
   industry_vertical: GENERIC
   solution_types:
-    - SOLUTION_TYPE_CHAT            # enables Gemini RAG answer_query
+    - SOLUTION_TYPE_CHAT
     - SOLUTION_TYPE_SEARCH
   content_config: CONTENT_REQUIRED
 
@@ -31,57 +29,49 @@ engine:
   display_name: SMB Intelligent Search
   search_tier: SEARCH_TIER_ENTERPRISE
   search_add_ons:
-    - SEARCH_ADD_ON_LLM             # Gemini summarisation + grounded answers
+    - SEARCH_ADD_ON_LLM
 
-# Metadata tagging. See documents/05-METADATA_SCHEMA.md.
 metadata:
-
-  # STRICT classifier — fires when files are organized as
-  #     <mirror_prefix>/Properties/<property>/<category>/<file>
-  # This is the canonical, deterministic path.
   category_folders:
     "01-Acquisition": legal
     "02-Financials":  finance
     "04-Permits":     permit
     "06-Invoices":    billing
     "07-Photos":      image
-
-  # Known property/entity folders. Populate by running:
-  #   python scripts/index.py --discover
+    "09-Email":       email
   properties: []
-
-  # HEURISTIC classifier — fallback when folders are flat/messy.
-  # Scans filenames case-insensitively. First match wins.
-  # Turn OFF once the strict layout is in place — strict beats fuzzy.
   heuristic_classification: false
-  default_property: null            # property tag used when a rule doesn't set one
+  default_property: null
   heuristic_rules:
-    # Generic defaults — extend for your industry.
     - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$",  doc_type: image   }
     - { pattern: "^inv[_\\s-]|invoice|receipt|bill",       doc_type: billing }
     - { pattern: "permit|inspection|code|zoning",          doc_type: permit  }
     - { pattern: "p&l|statement|bank|appraisal|balance",   doc_type: finance }
     - { pattern: "contract|closing|deed|title|ein|entity|llc|sow", doc_type: legal }
 
-# Pluggable data sources. See documents/04-CONNECTOR_GUIDE.md.
 connectors:
-
   drive:
     enabled: false
-    root_folder_id:                 # paste folder id from https://drive.google.com/drive/folders/<ID>
+    root_folder_id:
     mirror_as: Properties
     export_workspace_as: pdf
 
   gmail:
-    enabled: false                  # Phase 2 stub
+    enabled: false
+    client_secret_path: client_secret.json
+    query: "has:attachment"
+    after: "2024/01/01"
+    default_property: _inbox
+    index_body: true
+    index_attachments: true
 
   onedrive:
-    enabled: false                  # Phase 2 stub — rclone-based
+    enabled: false
 
   local_files:
     enabled: false
-    path:                           # absolute path to a directory to mirror
+    path:
     mirror_as: Properties
 
   csv:
-    enabled: false                  # Phase 2 stub
+    enabled: false

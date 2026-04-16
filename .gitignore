@@ -11,7 +11,7 @@ venv/
 service-account*.json
 credentials.json
 *token.json
-*client_secret*.json
+client_secret*.json
 *.key
 
 # Generated config (template lives at config/config.yaml.example)
@@ -30,7 +30,7 @@ Thumbs.db
 .idea/
 *.swp
 
-# Prior/unrelated work in this directory — not part of this project
+# Prior/unrelated work
 HARRIS_DEPLOYMENT/
 vertex-ai-search-starter/
 *.old
