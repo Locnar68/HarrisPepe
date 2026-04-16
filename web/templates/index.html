@@ -15,7 +15,7 @@
   .dot:nth-child(2) { animation-delay: 0.2s; }
   .dot:nth-child(3) { animation-delay: 0.4s; }
   .source-card { transition: all 0.15s; }
-  .source-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .source-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   #query-input:focus { outline: none; box-shadow: 0 0 0 2px #2563eb; }
   .filter-select { background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
   .mode-btn { padding: 5px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
@@ -23,9 +23,12 @@
   .mode-btn:not(.active) { background: #f1f5f9; color: #475569; }
   .answer-text p { margin-bottom: 0.5rem; }
   .answer-text strong { font-weight: 600; }
-  .sources-box { background: #f0f7ff; border: 2px solid #bfdbfe; border-radius: 12px; }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
-  .modal-box { background: white; border-radius: 16px; padding: 24px; width: 420px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  .sources-panel { background: #f0f7ff; border: 1.5px solid #bfdbfe; border-radius: 10px; width: 260px; min-width: 220px; flex-shrink: 0; font-size: 12px; }
+  .email-bar input { font-size: 12px; }
+  .email-bar button { font-size: 11px; }
+  .doc-item { background: white; border: 1px solid #dbeafe; border-radius: 6px; padding: 6px 8px; }
+  .doc-item:hover { border-color: #93c5fd; }
+  .doc-actions button { font-size: 10px; padding: 2px 6px; border-radius: 4px; }
 </style>
 </head>
 <body class="bg-gray-50 h-screen flex flex-col">
@@ -35,12 +38,12 @@
     <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-sm">AI</div>
     <div>
       <h1 class="text-lg font-semibold leading-tight">{{ company }}</h1>
-      <p class="text-xs text-gray-400">Vertex AI Search + Gemini RAG</p>
+      <p class="text-xs text-gray-400">Vertex AI Search + Gemini</p>
     </div>
   </div>
   <div class="flex items-center gap-3">
-    <button onclick="newConversation()" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium transition">+ New chat</button>
-    <span id="session-indicator" class="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 hidden">session</span>
+    <button onclick="newConversation()" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium transition">+ New</button>
+    <span id="session-indicator" class="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 hidden"></span>
     <select id="filter-property" class="filter-select text-gray-700">
       <option value="">All properties</option>
       {% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
@@ -49,20 +52,20 @@
       <option value="">All types</option>
       {% for d in doc_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
     </select>
-    <div class="flex gap-1 ml-2">
+    <div class="flex gap-1 ml-1">
       <button class="mode-btn active" data-mode="answer" onclick="setMode('answer')">Answer</button>
       <button class="mode-btn" data-mode="search" onclick="setMode('search')">Search</button>
     </div>
   </div>
 </header>
 
-<div id="chat-area" class="chat-area flex-1 px-4 md:px-8 lg:px-16 py-6">
-  <div class="max-w-3xl mx-auto text-center py-12 msg-enter" id="welcome">
+<div id="chat-area" class="chat-area flex-1 px-4 md:px-6 lg:px-10 py-6">
+  <div class="max-w-5xl mx-auto text-center py-12 msg-enter" id="welcome">
     <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
       <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
     </div>
     <h2 class="text-xl font-semibold text-gray-700 mb-2">Ask anything about your documents</h2>
-    <p class="text-gray-500 text-sm max-w-md mx-auto">Every answer shows source documents. Download or email them directly.</p>
+    <p class="text-gray-500 text-sm">Source documents shown with every answer. Download or email them instantly.</p>
     <div class="flex flex-wrap justify-center gap-2 mt-6">
       <button onclick="askQuestion('How much was the electrical inspection invoice?')" class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-200 transition">Electrical inspection cost?</button>
       <button onclick="askQuestion('What is the EIN for Shearwater Way LLC?')" class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-200 transition">EIN number?</button>
@@ -72,23 +75,8 @@
   </div>
 </div>
 
-<!-- Email modal -->
-<div id="email-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeEmailModal()">
-  <div class="modal-box">
-    <h3 class="text-lg font-semibold text-gray-800 mb-1">Email Document</h3>
-    <p id="email-doc-name" class="text-sm text-gray-500 mb-4 truncate"></p>
-    <label class="block text-xs font-medium text-gray-600 mb-1">Send to:</label>
-    <input id="email-to" type="email" placeholder="recipient@company.com"
-           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4 focus:outline-none focus:border-blue-500">
-    <div class="flex gap-2 justify-end">
-      <button onclick="closeEmailModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-      <button onclick="sendEmail()" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">Send Email</button>
-    </div>
-  </div>
-</div>
-
-<div class="flex-shrink-0 border-t border-gray-200 bg-white px-4 md:px-8 lg:px-16 py-3">
-  <div class="max-w-3xl mx-auto flex gap-3">
+<div class="flex-shrink-0 border-t border-gray-200 bg-white px-4 md:px-6 lg:px-10 py-3">
+  <div class="max-w-5xl mx-auto flex gap-3">
     <input id="query-input" type="text" placeholder="Ask a question..."
            class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm"
            onkeydown="if(event.key==='Enter')sendQuery()">
@@ -98,102 +86,111 @@
 
 <script>
 let currentMode = 'answer', currentSession = null;
-let pendingEmail = {};  // {uri, filename, property} for the open modal
+function getSavedEmail() { try { return localStorage.getItem('smb_email_to')||''; } catch(e) { return ''; } }
+function saveEmail(e) { try { localStorage.setItem('smb_email_to', e); } catch(e) {} }
 
-// Saved email — persists across page loads.
-function getSavedEmail() { try { return localStorage.getItem('smb_email_to') || ''; } catch(e) { return ''; } }
-function saveEmail(email) { try { localStorage.setItem('smb_email_to', email); } catch(e) {} }
+function setMode(m) { currentMode=m; document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m)); }
+function newConversation() { currentSession=null; location.reload(); }
+function updateBadge() { const b=document.getElementById('session-indicator'); if(currentSession){b.classList.remove('hidden','bg-gray-700','text-gray-400');b.classList.add('bg-green-700','text-green-300');b.textContent='● session';}else b.classList.add('hidden'); }
+function askQuestion(q) { document.getElementById('query-input').value=q; sendQuery(); }
+function scrollBottom() { const a=document.getElementById('chat-area'); a.scrollTop=a.scrollHeight; }
+function escapeHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
 
-function setMode(m) { currentMode = m; document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===m)); }
-function newConversation() { currentSession = null; location.reload(); }
-function updateBadge() {
-  const b = document.getElementById('session-indicator');
-  if (currentSession) { b.classList.remove('hidden','bg-gray-700','text-gray-400'); b.classList.add('bg-green-700','text-green-300'); b.textContent='● session'; }
-  else b.classList.add('hidden');
-}
-function askQuestion(q) { document.getElementById('query-input').value = q; sendQuery(); }
-function scrollBottom() { const a = document.getElementById('chat-area'); a.scrollTop = a.scrollHeight; }
-function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-
-function addMessage(role, html) {
-  const w = document.getElementById('welcome'); if (w) w.remove();
-  const area = document.getElementById('chat-area');
-  const el = document.createElement('div');
-  el.className = 'max-w-3xl mx-auto mb-4 msg-enter';
-  if (role === 'user') {
-    el.innerHTML = `<div class="flex justify-end"><div class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md max-w-lg text-sm">${escapeHtml(html)}</div></div>`;
+function addMsg(role, html) {
+  const w=document.getElementById('welcome'); if(w) w.remove();
+  const area=document.getElementById('chat-area');
+  const el=document.createElement('div');
+  el.className='max-w-5xl mx-auto mb-4 msg-enter';
+  if(role==='user') {
+    el.innerHTML=`<div class="flex justify-end"><div class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md max-w-lg text-sm">${escapeHtml(html)}</div></div>`;
   } else {
-    el.innerHTML = `<div class="flex justify-start"><div class="max-w-2xl w-full">${html}</div></div>`;
+    el.innerHTML=`<div class="flex justify-start w-full">${html}</div>`;
   }
   area.appendChild(el); scrollBottom(); return el;
 }
 function addLoading() {
-  return addMessage('bot', '<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm shadow-sm inline-block"><div class="flex items-center gap-1.5"><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div></div></div>');
+  return addMsg('bot','<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm shadow-sm inline-block"><div class="flex items-center gap-1.5"><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div></div></div>');
 }
 
-function formatAnswer(text) {
-  let h = escapeHtml(text);
-  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  h = h.replace(/\n\n/g, '</p><p>');
-  h = h.replace(/\n/g, '<br>');
-  return `<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-gray-800 shadow-sm"><div class="answer-text"><p>${h}</p></div></div>`;
+function fmtAnswer(text) {
+  let h=escapeHtml(text);
+  h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  h=h.replace(/\n\n/g,'</p><p>');
+  h=h.replace(/\n/g,'<br>');
+  return `<div class="answer-text"><p>${h}</p></div>`;
 }
 
-function buildSourcesBox(sources) {
-  if (!sources || !sources.length) return '';
-  let cards = '';
-  for (const s of sources) {
-    const t = s.title || s.filename || '(untitled)';
-    const tag = [s.property, s.category || s.doc_type].filter(Boolean).join(' / ');
-    const uri = s.uri || '';
-    const uriAttr = uri ? `data-uri="${escapeHtml(uri)}"` : '';
-    cards += `<div class="source-card bg-white border border-blue-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
-      <div class="min-w-0 flex-1">
-        <p class="text-sm font-medium text-gray-800 truncate" title="${escapeHtml(t)}">📎 ${escapeHtml(t)}</p>
-        ${tag ? `<p class="text-xs text-gray-400 mt-0.5">${escapeHtml(tag)}</p>` : ''}
+let _srcCounter = 0;
+function buildResponse(answerHtml, sources) {
+  _srcCounter++;
+  const panelId = 'sp-' + _srcCounter;
+  const hasSources = sources && sources.length > 0;
+
+  // Build source panel
+  let panel = '';
+  if (hasSources) {
+    let docs = '';
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i];
+      const t = s.title || s.filename || '(untitled)';
+      const tag = [s.property, s.category || s.doc_type].filter(Boolean).join('/');
+      const uri = s.uri || '';
+      docs += `<div class="doc-item mb-1.5">
+        <p class="font-medium text-gray-700 truncate leading-tight" title="${escapeHtml(t)}">📎 ${escapeHtml(t)}</p>
+        ${tag ? `<p class="text-gray-400 mt-0.5" style="font-size:10px">${escapeHtml(tag)}</p>` : ''}
+        ${uri ? `<div class="doc-actions flex gap-1 mt-1">
+          <button onclick="dlDoc('${uri}','${escapeHtml(t)}')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100">⬇</button>
+          <button onclick="dlDoc('${uri}','${escapeHtml(t)}')" class="bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100">🔗 Link</button>
+        </div>` : ''}
+      </div>`;
+    }
+
+    panel = `<div class="sources-panel p-3 ml-3">
+      <p class="font-bold text-blue-700 uppercase tracking-wider mb-2" style="font-size:10px">📄 ${sources.length} doc${sources.length>1?'s':''} used</p>
+      <div class="email-bar mb-2 flex gap-1">
+        <input id="em-${panelId}" type="email" placeholder="email@company.com" value="${escapeHtml(getSavedEmail())}"
+               class="flex-1 px-2 py-1 border border-blue-200 rounded bg-white min-w-0"
+               style="max-width:150px">
+        <button onclick="emailAll('${panelId}',${JSON.stringify(sources).replace(/'/g,"\\'")})"
+                class="px-2 py-1 bg-blue-600 text-white rounded font-medium whitespace-nowrap hover:bg-blue-700 transition">
+          ✉ Email all
+        </button>
       </div>
-      <div class="flex gap-1.5 flex-shrink-0">${uri ? `
-        <button onclick="downloadDoc('${uri}','${escapeHtml(t)}')"
-                class="px-2.5 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-md text-xs font-medium hover:bg-green-100 transition">⬇ Download</button>
-        <button onclick="openEmailModal('${uri}','${escapeHtml(t)}','${escapeHtml(s.property||'')}')"
-                class="px-2.5 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-md text-xs font-medium hover:bg-orange-100 transition">✉ Email</button>
-      ` : ''}</div></div>`;
+      <div class="overflow-y-auto" style="max-height:280px">${docs}</div>
+    </div>`;
   }
-  return `<div class="sources-box mt-3 px-4 py-3">
-    <p class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">📄 ${sources.length} document${sources.length>1?'s':''} used for this answer</p>
-    <div class="flex flex-col gap-2">${cards}</div>
+
+  // Two-column layout: answer left, sources right
+  return `<div class="flex items-start gap-0 w-full">
+    <div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-gray-800 shadow-sm flex-1 min-w-0">${answerHtml}</div>
+    ${panel}
   </div>`;
 }
 
-// Email modal
-function openEmailModal(uri, filename, property) {
-  pendingEmail = { uri, filename, property };
-  document.getElementById('email-doc-name').textContent = filename;
-  document.getElementById('email-to').value = getSavedEmail();
-  document.getElementById('email-modal').style.display = 'flex';
-  document.getElementById('email-to').focus();
-}
-function closeEmailModal() {
-  document.getElementById('email-modal').style.display = 'none';
-}
-async function sendEmail() {
-  const to = document.getElementById('email-to').value.trim();
-  if (!to) { alert('Please enter an email address'); return; }
-  saveEmail(to);  // remember for next time
-  const { uri, filename, property } = pendingEmail;
-  try {
-    const r = await fetch(`/api/email_link?uri=${encodeURIComponent(uri)}&filename=${encodeURIComponent(filename)}&property=${encodeURIComponent(property)}`);
-    const d = await r.json();
-    if (d.mailto) {
-      // Replace the empty mailto: to field with the saved address
-      const mailto = d.mailto.replace('mailto:?', `mailto:${encodeURIComponent(to)}?`);
-      window.location.href = mailto;
-      closeEmailModal();
-    } else {
-      alert(d.error || 'Failed');
-    }
-  } catch(e) { alert('Failed: ' + e.message); }
+async function emailAll(panelId, sources) {
+  const input = document.getElementById('em-' + panelId);
+  const to = (input ? input.value : '').trim();
+  if (!to) { alert('Enter an email address'); if(input) input.focus(); return; }
+  saveEmail(to);
+
+  // Generate signed URLs for all docs, build one mailto with all links.
+  let body = 'Documents from your search:\\n\\n';
+  let ok = 0;
+  for (const s of sources) {
+    if (!s.uri) continue;
+    try {
+      const r = await fetch('/api/download?uri=' + encodeURIComponent(s.uri));
+      const d = await r.json();
+      if (d.url) {
+        body += (s.title || 'Document') + '\\n' + d.url + '\\n\\n';
+        ok++;
+      }
+    } catch(e) {}
+  }
+  if (ok === 0) { alert('Could not generate download links'); return; }
+  const subject = encodeURIComponent(`${ok} document${ok>1?'s':''} from AI Search`);
+  window.location.href = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${encodeURIComponent(body)}`;
 }
 
 async function sendQuery() {
@@ -201,13 +198,13 @@ async function sendQuery() {
   const query = input.value.trim();
   if (!query) return;
   input.value = '';
-  addMessage('user', query);
+  addMsg('user', query);
   const loadingEl = addLoading();
 
   try {
     const resp = await fetch('/api/query', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         query, mode: currentMode,
         property: document.getElementById('filter-property').value,
@@ -217,26 +214,25 @@ async function sendQuery() {
     });
     const data = await resp.json();
     loadingEl.remove();
-
-    if (data.error) { addMessage('bot', `<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">${escapeHtml(data.error)}</div>`); return; }
-    if (data.session) { currentSession = data.session; updateBadge(); }
+    if (data.error) { addMsg('bot',`<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">${escapeHtml(data.error)}</div>`); return; }
+    if (data.session) { currentSession=data.session; updateBadge(); }
 
     if (data.mode === 'search') {
-      const srcs = (data.results||[]).map(r => ({title:r.filename, property:r.property, category:r.doc_type, uri:r.uri}));
-      addMessage('bot', (srcs.length ? '' : '<div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl text-sm text-gray-500">No results found.</div>') + buildSourcesBox(srcs));
+      const srcs = (data.results||[]).map(r=>({title:r.filename,property:r.property,category:r.doc_type,uri:r.uri}));
+      addMsg('bot', buildResponse(srcs.length ? `<p class="text-gray-600">Found ${srcs.length} matching documents.</p>` : '<p class="text-gray-500">No results found.</p>', srcs));
     } else {
       const text = data.text || 'No answer could be generated.';
-      addMessage('bot', formatAnswer(text) + buildSourcesBox(data.sources));
+      addMsg('bot', buildResponse(fmtAnswer(text), data.sources));
     }
   } catch(err) {
     loadingEl.remove();
-    addMessage('bot', `<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">Request failed: ${escapeHtml(err.message)}</div>`);
+    addMsg('bot',`<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">${escapeHtml(err.message)}</div>`);
   }
 }
 
-async function downloadDoc(uri, filename) {
-  try { const r = await fetch(`/api/download?uri=${encodeURIComponent(uri)}`); const d = await r.json(); d.url ? window.open(d.url,'_blank') : alert(d.error); }
-  catch(e) { alert('Download failed: '+e.message); }
+async function dlDoc(uri, filename) {
+  try { const r=await fetch('/api/download?uri='+encodeURIComponent(uri)); const d=await r.json(); d.url?window.open(d.url,'_blank'):alert(d.error); }
+  catch(e) { alert('Failed: '+e.message); }
 }
 </script>
 </body>
