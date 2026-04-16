@@ -1,7 +1,12 @@
-"""Gemini-grounded answer over the Vertex AI Search engine."""
+"""Gemini-grounded answer over the Vertex AI Search engine.
+
+Supports stateless (one-shot) and session-based (multi-turn) conversations.
+Pass a session name from a previous response to enable follow-ups like
+"which document was that from?" or "tell me more about the second one."
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core import conversational_client
 from core.config import Config
@@ -13,6 +18,7 @@ class Answer:
     text: str
     citations: list[dict]
     sources: list[dict]
+    session: str | None = None       # session resource name for follow-ups
 
 
 def answer(cfg: Config,
@@ -20,6 +26,7 @@ def answer(cfg: Config,
            property_: str | None = None,
            doc_type: str | None = None,
            category: str | None = None,
+           session: str | None = None,
            model_version: str = "gemini-2.0-flash-001/answer_gen/v1") -> Answer:
     from google.cloud import discoveryengine_v1 as de
 
@@ -29,6 +36,7 @@ def answer(cfg: Config,
     req = de.AnswerQueryRequest(
         serving_config=cfg.search_serving_config,
         query=de.Query(text=query),
+        session=session or None,
         search_spec=de.AnswerQueryRequest.SearchSpec(
             search_params=de.AnswerQueryRequest.SearchSpec.SearchParams(
                 max_return_results=10,
@@ -47,6 +55,11 @@ def answer(cfg: Config,
     resp = client.answer_query(request=req)
     a = resp.answer
     text = a.answer_text or ""
+
+    # Extract session name for multi-turn follow-ups.
+    session_name = None
+    if resp.session:
+        session_name = resp.session.name
 
     citations = []
     for c in a.citations:
@@ -69,4 +82,9 @@ def answer(cfg: Config,
                 "uri": di.uri if hasattr(di, "uri") else "",
             })
 
-    return Answer(text=text, citations=citations, sources=sources)
+    return Answer(
+        text=text,
+        citations=citations,
+        sources=sources,
+        session=session_name,
+    )

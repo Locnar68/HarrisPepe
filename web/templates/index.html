@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ company }}</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<style>
+  :root { --brand: #2563eb; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .chat-area { height: calc(100vh - 180px); overflow-y: auto; scroll-behavior: smooth; }
+  .msg-enter { animation: slideUp 0.3s ease-out; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,80%,100% { opacity:0.3; } 40% { opacity:1; } }
+  .dot { animation: pulse 1.4s infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  .source-card { transition: all 0.15s; }
+  .source-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  #query-input:focus { outline: none; box-shadow: 0 0 0 2px var(--brand); }
+  .filter-select { background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  .mode-btn { padding: 5px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .mode-btn.active { background: var(--brand); color: white; }
+  .mode-btn:not(.active) { background: #f1f5f9; color: #475569; }
+  .answer-text p { margin-bottom: 0.5rem; }
+  .answer-text strong { font-weight: 600; }
+  .session-badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; }
+</style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+
+<!-- Header -->
+<header class="bg-gray-800 text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-sm">AI</div>
+    <div>
+      <h1 class="text-lg font-semibold leading-tight">{{ company }}</h1>
+      <p class="text-xs text-gray-400">Powered by Vertex AI Search + Gemini</p>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <button onclick="newConversation()"
+            class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium transition"
+            title="Start a new conversation (clears session context)">
+      + New chat
+    </button>
+    <span id="session-indicator" class="session-badge bg-gray-700 text-gray-400 hidden">session active</span>
+    <select id="filter-property" class="filter-select text-gray-700">
+      <option value="">All properties</option>
+      {% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+    </select>
+    <select id="filter-doctype" class="filter-select text-gray-700">
+      <option value="">All types</option>
+      {% for d in doc_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+    </select>
+    <div class="flex gap-1 ml-2">
+      <button class="mode-btn active" data-mode="answer" onclick="setMode('answer')">Answer</button>
+      <button class="mode-btn" data-mode="search" onclick="setMode('search')">Search</button>
+    </div>
+  </div>
+</header>
+
+<!-- Chat area -->
+<div id="chat-area" class="chat-area flex-1 px-4 md:px-8 lg:px-16 py-6">
+  <div class="max-w-3xl mx-auto text-center py-12 msg-enter" id="welcome">
+    <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+      <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+    </div>
+    <h2 class="text-xl font-semibold text-gray-700 mb-2">Ask anything about your documents</h2>
+    <p class="text-gray-500 text-sm max-w-md mx-auto mb-1">
+      Search across invoices, permits, financials, closing documents, and more.
+    </p>
+    <p class="text-gray-400 text-xs max-w-md mx-auto">
+      Conversations are multi-turn — ask follow-ups like "which document was that from?"
+    </p>
+    <div class="flex flex-wrap justify-center gap-2 mt-6">
+      <button onclick="askQuestion('How much was the electrical inspection invoice?')"
+              class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-200 transition">
+        How much was the electrical inspection?
+      </button>
+      <button onclick="askQuestion('What is the EIN for Shearwater Way LLC?')"
+              class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-200 transition">
+        What is the EIN number?
+      </button>
+      <button onclick="askQuestion('Tell me about the Northridge closing')"
+              class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-200 transition">
+        Tell me about the Northridge closing
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Input bar -->
+<div class="flex-shrink-0 border-t border-gray-200 bg-white px-4 md:px-8 lg:px-16 py-3">
+  <div class="max-w-3xl mx-auto flex gap-3">
+    <input id="query-input" type="text" placeholder="Ask a question... (follow-ups work too)"
+           class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm"
+           onkeydown="if(event.key==='Enter')sendQuery()">
+    <button onclick="sendQuery()"
+            class="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition flex-shrink-0">
+      Ask
+    </button>
+  </div>
+</div>
+
+<script>
+let currentMode = 'answer';
+let currentSession = null;  // Vertex AI session name for multi-turn
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+
+function newConversation() {
+  currentSession = null;
+  document.getElementById('session-indicator').classList.add('hidden');
+  const area = document.getElementById('chat-area');
+  area.innerHTML = '';
+  // Re-add welcome
+  location.reload();
+}
+
+function updateSessionBadge() {
+  const badge = document.getElementById('session-indicator');
+  if (currentSession) {
+    badge.classList.remove('hidden');
+    badge.classList.remove('bg-gray-700', 'text-gray-400');
+    badge.classList.add('bg-green-700', 'text-green-300');
+    badge.textContent = '● session active';
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function askQuestion(q) {
+  document.getElementById('query-input').value = q;
+  sendQuery();
+}
+
+function scrollBottom() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function addMessage(role, html) {
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+  const area = document.getElementById('chat-area');
+  const w = document.createElement('div');
+  w.className = 'max-w-3xl mx-auto mb-4 msg-enter';
+  if (role === 'user') {
+    w.innerHTML = `<div class="flex justify-end"><div class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md max-w-lg text-sm">${escapeHtml(html)}</div></div>`;
+  } else {
+    w.innerHTML = `<div class="flex justify-start"><div class="bg-white border border-gray-200 px-4 py-3 rounded-2xl rounded-bl-md max-w-2xl text-sm text-gray-800 shadow-sm">${html}</div></div>`;
+  }
+  area.appendChild(w);
+  scrollBottom();
+  return w;
+}
+
+function addLoading() {
+  return addMessage('bot', `<div class="flex items-center gap-1.5 py-1"><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div><div class="dot w-2 h-2 bg-gray-400 rounded-full"></div></div>`);
+}
+
+function formatAnswer(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  return `<div class="answer-text"><p>${html}</p></div>`;
+}
+
+function buildSourceCards(sources) {
+  if (!sources || !sources.length) return '';
+  let c = `<div class="mt-3 pt-3 border-t border-gray-100"><p class="text-xs font-medium text-gray-500 mb-2">📄 Sources</p><div class="flex flex-col gap-2">`;
+  for (const s of sources) {
+    const title = s.title || '(untitled)';
+    const tag = [s.property, s.category].filter(Boolean).join(' / ');
+    const uri = s.uri || '';
+    c += `<div class="source-card bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+      <div class="min-w-0"><p class="text-sm font-medium text-gray-700 truncate">${escapeHtml(title)}</p>${tag ? `<p class="text-xs text-gray-400">${escapeHtml(tag)}</p>` : ''}</div>
+      <div class="flex gap-1.5 flex-shrink-0">${uri ? `
+        <button onclick="downloadDoc('${uri}','${escapeHtml(title)}')" class="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-md text-xs font-medium hover:bg-green-100 transition">⬇ Download</button>
+        <button onclick="emailDoc('${uri}','${escapeHtml(title)}','${escapeHtml(s.property)}')" class="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-md text-xs font-medium hover:bg-orange-100 transition">✉ Email</button>
+      ` : ''}</div></div>`;
+  }
+  return c + '</div></div>';
+}
+
+function buildSearchResults(results) {
+  if (!results || !results.length) return '<p class="text-gray-500">No results found.</p>';
+  let h = '<div class="flex flex-col gap-2">';
+  for (const r of results) {
+    h += `<div class="source-card bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+      <div class="min-w-0"><p class="text-sm font-medium text-gray-700 truncate">${escapeHtml(r.filename)}</p><p class="text-xs text-gray-400">${escapeHtml(r.property)} / ${escapeHtml(r.doc_type)}</p></div>
+      <div class="flex gap-1.5 flex-shrink-0"><span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">#${r.rank}</span>${r.uri ? `
+        <button onclick="downloadDoc('${r.uri}','${escapeHtml(r.filename)}')" class="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-md text-xs font-medium hover:bg-green-100 transition">⬇</button>
+        <button onclick="emailDoc('${r.uri}','${escapeHtml(r.filename)}','${escapeHtml(r.property)}')" class="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-md text-xs font-medium hover:bg-orange-100 transition">✉</button>
+      ` : ''}</div></div>`;
+  }
+  return h + '</div>';
+}
+
+async function sendQuery() {
+  const input = document.getElementById('query-input');
+  const query = input.value.trim();
+  if (!query) return;
+  input.value = '';
+  addMessage('user', query);
+  const loadingEl = addLoading();
+
+  const prop = document.getElementById('filter-property').value;
+  const dtype = document.getElementById('filter-doctype').value;
+
+  try {
+    const resp = await fetch('/api/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        query,
+        mode: currentMode,
+        property: prop,
+        doc_type: dtype,
+        session: currentSession,   // pass session for multi-turn
+      }),
+    });
+    const data = await resp.json();
+    loadingEl.remove();
+
+    if (data.error) {
+      addMessage('bot', `<p class="text-red-600">${escapeHtml(data.error)}</p>`);
+      return;
+    }
+
+    // Capture session for follow-up queries.
+    if (data.session) {
+      currentSession = data.session;
+      updateSessionBadge();
+    }
+
+    if (data.mode === 'search') {
+      addMessage('bot', buildSearchResults(data.results));
+    } else {
+      const text = data.text || 'No answer could be generated.';
+      addMessage('bot', formatAnswer(text) + buildSourceCards(data.sources));
+    }
+  } catch (err) {
+    loadingEl.remove();
+    addMessage('bot', `<p class="text-red-600">Request failed: ${escapeHtml(err.message)}</p>`);
+  }
+}
+
+async function downloadDoc(uri, filename) {
+  try {
+    const r = await fetch(`/api/download?uri=${encodeURIComponent(uri)}`);
+    const d = await r.json();
+    d.url ? window.open(d.url, '_blank') : alert(d.error || 'Download failed');
+  } catch (e) { alert('Download failed: ' + e.message); }
+}
+
+async function emailDoc(uri, filename, property) {
+  try {
+    const r = await fetch(`/api/email_link?uri=${encodeURIComponent(uri)}&filename=${encodeURIComponent(filename)}&property=${encodeURIComponent(property)}`);
+    const d = await r.json();
+    d.mailto ? (window.location.href = d.mailto) : alert(d.error || 'Email failed');
+  } catch (e) { alert('Email failed: ' + e.message); }
+}
+</script>
+</body>
+</html>
