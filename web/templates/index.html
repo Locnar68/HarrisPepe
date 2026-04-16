@@ -32,20 +32,65 @@
   .sess:hover{background:#1e293b;}.sess.active{background:#1e293b;border-color:#334155;}
   .sess-label{font-size:12px;font-weight:500;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sess-sub{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .admin-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:none;justify-content:center;align-items:center;}
+  .admin-modal.open{display:flex;}
+  .admin-box{background:white;border-radius:16px;width:640px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .stat-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;}
+  .stat-val{font-size:24px;font-weight:700;color:#1B365D;}
+  .stat-label{font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.5px;}
 </style>
 </head>
 <body class="bg-gray-50 flex">
 <div id="overlay" class="overlay" onclick="toggleSidebar()"></div>
+
+<!-- Sidebar -->
 <div id="sidebar" class="sidebar bg-gray-900 flex-shrink-0 flex flex-col h-full">
   <div class="p-4 border-b border-gray-700">
     <div class="flex items-center gap-2 mb-2">
-      {% if logo_url %}<img src="{{ logo_url }}" class="w-8 h-8 rounded" alt="Logo">{% else %}<div class="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-xs text-white">AI</div>{% endif %}
+      {% if logo_url %}<img src="{{ logo_url }}" class="w-8 h-8 rounded" alt="">{% else %}<div class="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-xs text-white">AI</div>{% endif %}
       <div><h1 class="text-sm font-semibold text-white leading-tight">{{ company }}</h1><p class="text-xs text-gray-500">AI Document Search</p></div>
     </div>
-    <button onclick="newSession()" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium border border-gray-600 transition">+ New Session</button>
+    <button onclick="newSession()" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium border border-gray-600">+ New Session</button>
   </div>
   <div id="sess-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+  <!-- Admin button at bottom of sidebar -->
+  <div class="p-3 border-t border-gray-700">
+    <button onclick="showAdmin()" class="w-full px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg text-xs flex items-center gap-2">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Admin
+    </button>
+  </div>
 </div>
+
+<!-- Admin Modal -->
+<div id="admin-modal" class="admin-modal" onclick="if(event.target===this)closeAdmin()">
+  <div class="admin-box">
+    <!-- Login step -->
+    <div id="admin-login" class="p-8 text-center">
+      <div class="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+      </div>
+      <h3 class="text-lg font-semibold text-gray-800 mb-1">Admin Access</h3>
+      <p class="text-xs text-gray-500 mb-4">Enter the admin password to view costs and usage.</p>
+      <input id="admin-pw" type="password" placeholder="Password" class="px-4 py-2 border border-gray-300 rounded-lg text-sm w-48 text-center mb-3" onkeydown="if(event.key==='Enter')adminLogin()">
+      <br>
+      <button onclick="adminLogin()" class="px-6 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-700">Unlock</button>
+      <p id="admin-err" class="text-red-500 text-xs mt-2"></p>
+    </div>
+    <!-- Dashboard step -->
+    <div id="admin-dash" style="display:none">
+      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div><h3 class="text-lg font-semibold text-gray-800">Cost & Usage Dashboard</h3><p class="text-xs text-gray-500">Google Cloud + Vertex AI Search</p></div>
+        <button onclick="closeAdmin()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+      </div>
+      <div id="admin-content" class="p-6">
+        <p class="text-gray-500 text-sm">Loading...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main area -->
 <div class="flex-1 flex flex-col min-w-0 h-full">
   <header class="bg-gray-800 text-white px-4 py-2.5 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-2">
@@ -55,26 +100,21 @@
     </div>
     <button onclick="toggleTpl()" class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-xs font-medium">📄 Templates</button>
   </header>
-  <div id="tpl-panel" class="tpl-panel px-4 py-3">
-    <div class="max-w-4xl mx-auto">
-      <div id="tpl-step1">
-        <div class="flex flex-col md:flex-row gap-2 items-start md:items-end">
-          <div class="flex-1 min-w-0"><label class="text-xs font-semibold text-yellow-800 block mb-1">Template</label><select id="tpl-select" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Loading...</option></select></div>
-          <div class="w-full md:w-44"><label class="text-xs font-semibold text-yellow-800 block mb-1">Property</label><select id="tpl-prop" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Default</option>{% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
-          <button id="tpl-fill-btn" onclick="fillFields()" class="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700">🔍 Fill with AI</button>
-        </div><div id="tpl-fill-status" class="mt-2 text-xs"></div>
-      </div>
-      <div id="tpl-step2" style="display:none">
-        <div class="flex items-center justify-between mb-2"><div><h3 id="tpl-title" class="text-sm font-bold text-yellow-800"></h3><p id="tpl-subtitle" class="text-xs text-yellow-600"></p></div><button onclick="backToStep1()" class="text-xs text-yellow-700 underline">< Back</button></div>
-        <div id="tpl-fields" class="space-y-2 mb-3 overflow-y-auto pr-1" style="max-height:25vh"></div>
-        <div class="flex flex-col md:flex-row gap-2 items-start md:items-center pt-2 border-t border-yellow-200">
-          <input id="tpl-email" type="email" placeholder="Email PDF to..." class="flex-1 px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white min-w-0">
-          <div class="flex gap-2"><button id="tpl-pdf-btn" onclick="genPDF(false)" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">⬇ PDF</button><button id="tpl-email-btn" onclick="genPDF(true)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">✉ Email</button></div>
-        </div><div id="tpl-pdf-status" class="mt-2 text-xs"></div>
-      </div>
+  <div id="tpl-panel" class="tpl-panel px-4 py-3"><div class="max-w-4xl mx-auto">
+    <div id="tpl-step1"><div class="flex flex-col md:flex-row gap-2 items-start md:items-end">
+      <div class="flex-1 min-w-0"><label class="text-xs font-semibold text-yellow-800 block mb-1">Template</label><select id="tpl-select" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Loading...</option></select></div>
+      <div class="w-full md:w-44"><label class="text-xs font-semibold text-yellow-800 block mb-1">Property</label><select id="tpl-prop" class="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white text-gray-700"><option value="">Default</option>{% for p in properties %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+      <button id="tpl-fill-btn" onclick="fillFields()" class="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700">🔍 Fill with AI</button>
+    </div><div id="tpl-fill-status" class="mt-2 text-xs"></div></div>
+    <div id="tpl-step2" style="display:none">
+      <div class="flex items-center justify-between mb-2"><div><h3 id="tpl-title" class="text-sm font-bold text-yellow-800"></h3><p id="tpl-subtitle" class="text-xs text-yellow-600"></p></div><button onclick="backToStep1()" class="text-xs text-yellow-700 underline">< Back</button></div>
+      <div id="tpl-fields" class="space-y-2 mb-3 overflow-y-auto pr-1" style="max-height:25vh"></div>
+      <div class="flex flex-col md:flex-row gap-2 items-start md:items-center pt-2 border-t border-yellow-200">
+        <input id="tpl-email" type="email" placeholder="Email PDF to..." class="flex-1 px-3 py-2 border border-yellow-300 rounded-lg text-sm bg-white min-w-0">
+        <div class="flex gap-2"><button id="tpl-pdf-btn" onclick="genPDF(false)" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">⬇ PDF</button><button id="tpl-email-btn" onclick="genPDF(true)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">✉ Email</button></div>
+      </div><div id="tpl-pdf-status" class="mt-2 text-xs"></div>
     </div>
-  </div>
-  <!-- Chat -->
+  </div></div>
   <div id="chat" class="chat-area px-3 md:px-6 lg:px-10 py-4">
     <div class="max-w-4xl mx-auto flex flex-col justify-center items-center h-full msg-enter" id="welcome">
       <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-3">
@@ -97,6 +137,7 @@
     </div>
   </div>
 </div>
+
 <script>
 const emailOk={{ 'true' if email_enabled else 'false' }};let pn=0;const SC={};
 function loadSessions(){try{return JSON.parse(localStorage.getItem('smb_sess')||'[]');}catch(e){return [];}}
@@ -108,7 +149,7 @@ function newSession(){const id='s'+Date.now();sessions.unshift({id,label:'New Se
 function switchSession(id){activeId=id;renderSessions();renderChat();}
 function getActive(){return sessions.find(s=>s.id===activeId)||null;}
 function renderSessions(){const el=document.getElementById('sess-list');el.innerHTML='';for(const s of sessions){const div=document.createElement('div');div.className='sess'+(s.id===activeId?' active':'');div.onclick=()=>switchSession(s.id);const q=s.firstQuery||'New Session';div.innerHTML='<div class="sess-label">'+(s.property?s.property+': ':'')+esc(q.substring(0,40))+'</div><div class="sess-sub">'+new Date(s.created).toLocaleDateString()+'</div>';el.appendChild(div);}}
-function renderChat(){const s=getActive();const chat=document.getElementById('chat');if(!s||!s.messages.length){chat.innerHTML=document.getElementById('welcome-tpl').innerHTML;return;}chat.innerHTML='';for(const m of s.messages){const el=document.createElement('div');el.className='max-w-4xl mx-auto mb-3 msg-enter';el.innerHTML=m.html;chat.appendChild(el);}chat.scrollTop=chat.scrollHeight;}
+function renderChat(){const s=getActive();const c=document.getElementById('chat');if(!s||!s.messages.length){c.innerHTML=document.getElementById('welcome-tpl').innerHTML;return;}c.innerHTML='';for(const m of s.messages){const el=document.createElement('div');el.className='max-w-4xl mx-auto mb-3 msg-enter';el.innerHTML=m.html;c.appendChild(el);}c.scrollTop=c.scrollHeight;}
 function saveMsg(role,html){const s=getActive();if(!s)return;const w=role==='user'?'<div class="flex justify-end"><div class="bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md max-w-xs md:max-w-lg text-sm">'+esc(html)+'</div></div>':'<div class="flex justify-start w-full">'+html+'</div>';s.messages.push({role,html:w});if(role==='user'&&!s.firstQuery){s.firstQuery=html.substring(0,50);s.property=document.getElementById('fp').value;s.label=s.firstQuery;renderSessions();}saveSessions(sessions);}
 function ge(id){return document.getElementById(id);}
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
@@ -124,14 +165,88 @@ function getEm(pid){const inp=ge('em-'+pid);const to=(inp?inp.value:'').trim();i
 async function emOne(pid,idx){const to=getEm(pid);if(!to)return;const s=SC[pid][idx];try{const r=await fetch('/api/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,docs:[{uri:s.uri,title:s.title}]})});const d=await r.json();d.sent?toast('Sent',true):toast(d.error,false);}catch(e){toast('Failed',false);}}
 async function emAll(pid){const to=getEm(pid);if(!to)return;const docs=SC[pid].filter(s=>s.uri).map(s=>({uri:s.uri,title:s.title}));const btn=ge('eb-'+pid);btn.textContent='...';btn.disabled=true;try{const r=await fetch('/api/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,docs})});const d=await r.json();btn.textContent='✉ Email all';btn.disabled=false;d.sent?toast(d.doc_count+' sent',true):toast(d.error,false);}catch(e){btn.textContent='✉ Email all';btn.disabled=false;}}
 async function sendQ(){const inp=ge('qi');const q=inp.value.trim();if(!q)return;inp.value='';if(!activeId)newSession();addMsg('user',q);saveMsg('user',q);const dots=showDots();const s=getActive();try{const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,property:ge('fp').value,doc_type:ge('fd').value,session:s?s.vertexSession:null})});const data=await r.json();dots.remove();if(data.error){const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(data.error)+'</div>';addMsg('bot',h);saveMsg('bot',h);return;}if(data.session&&s){s.vertexSession=data.session;saveSessions(sessions);}const html=buildResp(fmt(data.text||'No answer.'),data.sources);addMsg('bot',html);saveMsg('bot',html);}catch(err){dots.remove();const h='<div class="bg-red-50 border border-red-200 px-4 py-3 rounded-2xl text-sm text-red-700">'+esc(err.message)+'</div>';addMsg('bot',h);saveMsg('bot',h);}}
+// Templates
 let tplOpen=false,currentDraft={};
 function toggleTpl(){tplOpen=!tplOpen;ge('tpl-panel').classList.toggle('open',tplOpen);if(tplOpen)loadTpls();}
 function backToStep1(){ge('tpl-step1').style.display='';ge('tpl-step2').style.display='none';}
 async function loadTpls(){try{const r=await fetch('/api/templates');const d=await r.json();const sel=ge('tpl-select');sel.innerHTML='<option value="">-- Select --</option>';for(const t of d.templates)sel.innerHTML+='<option value="'+t.id+'">'+esc(t.title)+' ('+t.fields+')</option>';ge('tpl-email').value=em();}catch(e){}}
-async function fillFields(){const tpl=ge('tpl-select').value;if(!tpl){toast('Select a template',false);return;}const btn=ge('tpl-fill-btn');btn.disabled=true;btn.innerHTML='<span class="spinner">...</span> Filling (1-2 min)';ge('tpl-fill-status').innerHTML='<span class="text-yellow-700">Reading your documents...</span>';try{const r=await fetch('/api/draft/fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:tpl,property:ge('tpl-prop').value})});const d=await r.json();btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='';if(d.error){ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}currentDraft=d;showEditStep(d);}catch(e){btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}}
-function showEditStep(d){ge('tpl-step1').style.display='none';ge('tpl-step2').style.display='';ge('tpl-title').textContent=ge('tpl-select').options[ge('tpl-select').selectedIndex].text;ge('tpl-subtitle').textContent=d.resolved+'/'+d.total+' filled. Edit, then download.';const c=ge('tpl-fields');c.innerHTML='';for(const f of d.fields){const div=document.createElement('div');div.className='field-row '+(f.ok?'ok':'fail')+' flex gap-2 items-start';div.innerHTML='<div class="flex-shrink-0 w-28 pt-1"><label class="text-xs font-medium text-gray-700 truncate block"><span class="'+(f.ok?'text-green-600':'text-red-500')+'">'+(f.ok?'Y':'X')+'</span> '+esc(f.name)+'</label></div><textarea data-field="'+esc(f.name)+'" class="flex-1 px-2 py-1 border rounded text-gray-800" rows="2">'+esc(f.answer)+'</textarea>';c.appendChild(div);}}
+async function fillFields(){const tpl=ge('tpl-select').value;if(!tpl){toast('Select a template',false);return;}const btn=ge('tpl-fill-btn');btn.disabled=true;btn.innerHTML='<span class="spinner">...</span> Filling';ge('tpl-fill-status').innerHTML='<span class="text-yellow-700">Reading documents...</span>';try{const r=await fetch('/api/draft/fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:tpl,property:ge('tpl-prop').value})});const d=await r.json();btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='';if(d.error){ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}currentDraft=d;showEditStep(d);}catch(e){btn.disabled=false;btn.innerHTML='🔍 Fill with AI';ge('tpl-fill-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}}
+function showEditStep(d){ge('tpl-step1').style.display='none';ge('tpl-step2').style.display='';ge('tpl-title').textContent=ge('tpl-select').options[ge('tpl-select').selectedIndex].text;ge('tpl-subtitle').textContent=d.resolved+'/'+d.total+' filled';const c=ge('tpl-fields');c.innerHTML='';for(const f of d.fields){const div=document.createElement('div');div.className='field-row '+(f.ok?'ok':'fail')+' flex gap-2 items-start';div.innerHTML='<div class="flex-shrink-0 w-28 pt-1"><label class="text-xs font-medium text-gray-700 truncate block"><span class="'+(f.ok?'text-green-600':'text-red-500')+'">'+(f.ok?'Y':'X')+'</span> '+esc(f.name)+'</label></div><textarea data-field="'+esc(f.name)+'" class="flex-1 px-2 py-1 border rounded text-gray-800" rows="2">'+esc(f.answer)+'</textarea>';c.appendChild(div);}}
 function collectF(){const f={};ge('tpl-fields').querySelectorAll('textarea[data-field]').forEach(t=>{f[t.dataset.field]=t.value;});return f;}
 async function genPDF(send){const fields=collectF();const email=send?ge('tpl-email').value.trim():'';if(send&&!email){toast('Enter email',false);return;}if(email)emSave(email);const bid=send?'tpl-email-btn':'tpl-pdf-btn';const btn=ge(bid);const orig=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner">...</span>';ge('tpl-pdf-status').innerHTML='';try{const r=await fetch('/api/draft/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:currentDraft.template_id,property:currentDraft.property,fields,email})});const d=await r.json();btn.disabled=false;btn.textContent=orig;if(d.error){ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(d.error)+'</span>';return;}let h='<a href="'+d.download_url+'" target="_blank" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium inline-block">⬇ Download PDF</a>';if(d.emailed_to)h+=' <span class="text-blue-600 text-xs">Sent to '+esc(d.emailed_to)+'</span>';ge('tpl-pdf-status').innerHTML=h;if(!send)window.open(d.download_url,'_blank');}catch(e){btn.disabled=false;btn.textContent=orig;ge('tpl-pdf-status').innerHTML='<span class="text-red-600">'+esc(e.message)+'</span>';}}
+
+// ── Admin ──
+let adminToken=null;
+function showAdmin(){ge('admin-modal').classList.add('open');ge('admin-pw').value='';ge('admin-err').textContent='';ge('admin-login').style.display='';ge('admin-dash').style.display='none';if(adminToken)loadAdminStats();ge('admin-pw').focus();}
+function closeAdmin(){ge('admin-modal').classList.remove('open');}
+async function adminLogin(){
+  const pw=ge('admin-pw').value;
+  try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const d=await r.json();
+    if(d.token){adminToken=d.token;ge('admin-login').style.display='none';ge('admin-dash').style.display='';loadAdminStats();}
+    else{ge('admin-err').textContent=d.error||'Invalid password';}
+  }catch(e){ge('admin-err').textContent='Connection failed';}
+}
+async function loadAdminStats(){
+  const content=ge('admin-content');
+  content.innerHTML='<p class="text-gray-500">Loading GCP metrics...</p>';
+  try{
+    const r=await fetch('/api/admin/stats',{headers:{'X-Admin-Token':adminToken}});
+    const d=await r.json();
+    if(d.error){content.innerHTML='<p class="text-red-500">'+esc(d.error)+'</p>';return;}
+
+    let h='<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">';
+    h+=statCard(d.data_store.documents,'Documents','In data store');
+    h+=statCard(d.storage.objects,'Files in GCS','Bucket objects');
+    h+=statCard(d.storage.size_mb.toFixed(1)+' MB','Storage Used','GCS bucket');
+    h+=statCard('$'+d.cost_estimates.total_monthly.toFixed(2),'Est. Monthly','Total cost');
+    h+='</div>';
+
+    h+='<h4 class="text-sm font-semibold text-gray-700 mb-3">Cost Breakdown (Monthly Estimate)</h4>';
+    h+='<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">';
+    h+=costCard('Document Hosting','$'+d.cost_estimates.doc_hosting.toFixed(2),'$2.50 per 1,000 docs/month');
+    h+=costCard('GCS Storage','$'+d.cost_estimates.gcs_storage.toFixed(4),'$0.026 per GB/month');
+    h+=costCard('API Queries','$'+d.cost_estimates.api_queries.toFixed(2),'$4.00 per 1,000 queries');
+    h+='</div>';
+
+    h+='<h4 class="text-sm font-semibold text-gray-700 mb-3">API Usage</h4>';
+    h+='<div class="grid grid-cols-2 gap-3 mb-6">';
+    h+=statCard(d.api_usage.today,'Queries Today','Discovery Engine API');
+    h+=statCard(d.api_usage.this_month,'Queries This Month','Discovery Engine API');
+    h+='</div>';
+
+    h+='<h4 class="text-sm font-semibold text-gray-700 mb-3">Infrastructure</h4>';
+    h+='<table class="w-full text-xs"><tbody>';
+    h+=infoRow('Data Store',d.data_store.id);
+    h+=infoRow('Search Engine',d.data_store.engine);
+    h+=infoRow('GCS Bucket',d.storage.bucket);
+    h+='</tbody></table>';
+
+    if(d.pricing){
+      h+='<h4 class="text-sm font-semibold text-gray-700 mt-5 mb-3">Pricing Reference (Vertex AI Search Enterprise)</h4>';
+      h+='<table class="w-full text-xs"><tbody>';
+      h+=infoRow('Search queries','$'+d.pricing.search_query_per_1k.toFixed(2)+' per 1,000');
+      h+=infoRow('Answer/LLM queries','$'+d.pricing.answer_query_per_1k.toFixed(2)+' per 1,000');
+      h+=infoRow('Document hosting','$'+d.pricing.doc_hosting_per_1k_month.toFixed(2)+' per 1,000 docs/month');
+      h+=infoRow('GCS storage','$'+d.pricing.gcs_storage_per_gb_month.toFixed(3)+' per GB/month');
+      h+='</tbody></table>';
+    }
+
+    if(d.errors&&d.errors.length){
+      h+='<div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"><p class="text-xs font-semibold text-yellow-700 mb-1">Notes</p>';
+      for(const e of d.errors) h+='<p class="text-xs text-yellow-600">'+esc(e)+'</p>';
+      h+='</div>';
+    }
+
+    h+='<div class="mt-4 text-center"><button onclick="loadAdminStats()" class="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200">Refresh</button></div>';
+    content.innerHTML=h;
+  }catch(e){content.innerHTML='<p class="text-red-500">'+esc(e.message)+'</p>';}
+}
+function statCard(val,label,sub){return '<div class="stat-card text-center"><div class="stat-val">'+val+'</div><div class="stat-label mt-1">'+label+'</div><div class="text-xs text-gray-400 mt-0.5">'+sub+'</div></div>';}
+function costCard(name,val,rate){return '<div class="stat-card"><div class="text-sm font-semibold text-gray-700">'+name+'</div><div class="text-xl font-bold text-green-700 mt-1">'+val+'</div><div class="text-xs text-gray-400 mt-1">'+rate+'</div></div>';}
+function infoRow(label,val){return '<tr class="border-b border-gray-100"><td class="py-2 text-gray-500 w-40">'+label+'</td><td class="py-2 font-medium text-gray-700">'+esc(val||'-')+'</td></tr>';}
+
+// Init
 const welEl=ge('welcome');const welTpl=document.createElement('template');welTpl.id='welcome-tpl';if(welEl)welTpl.innerHTML=welEl.outerHTML;document.body.appendChild(welTpl);
 if(sessions.length){activeId=sessions[0].id;}else{newSession();}renderSessions();renderChat();loadTpls();
 </script>

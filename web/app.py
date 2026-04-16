@@ -1,7 +1,7 @@
-"""Web UI — Flask app with search, email, template drafting, and session sidebar."""
+"""Web UI — Flask app with search, email, templates, sessions, and admin dashboard."""
 from __future__ import annotations
 
-import os, re, sys, smtplib, uuid
+import os, re, sys, smtplib, uuid, hashlib, time
 from datetime import timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -19,15 +19,29 @@ from vertex.search import search as do_search
 from vertex.answer import answer as do_answer
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
+app.secret_key = os.urandom(24)
 _cfg = None
 TEMPLATE_DIR = ROOT / "templates"
 OUTPUT_DIR = ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# Simple token for admin auth (valid for 24 hours).
+_admin_tokens = {}
+
 def cfg():
     global _cfg
     if _cfg is None: _cfg = load_config()
     return _cfg
+
+def _admin_password(c):
+    return str(c.raw.get("admin", {}).get("password", "0714"))
+
+def _check_admin(c):
+    token = req.headers.get("X-Admin-Token", "")
+    if token in _admin_tokens:
+        if time.time() - _admin_tokens[token] < 86400: return True
+        del _admin_tokens[token]
+    return False
 
 def _signed_url(c, uri, hours=24):
     parts = uri.replace("gs://","").split("/",1)
@@ -37,8 +51,7 @@ def _signed_url(c, uri, hours=24):
 def _send_smtp(c, to, subject, body, attachment_path=None):
     ec=c.raw.get("email",{}) or {}; sender,pw=ec.get("sender",""),ec.get("app_password","")
     if not sender or not pw: return "Email not configured."
-    msg=MIMEMultipart(); msg["From"],msg["To"],msg["Subject"]=sender,to,subject
-    msg.attach(MIMEText(body,"plain"))
+    msg=MIMEMultipart(); msg["From"],msg["To"],msg["Subject"]=sender,to,subject; msg.attach(MIMEText(body,"plain"))
     if attachment_path and Path(attachment_path).exists():
         with open(attachment_path,"rb") as f: part=MIMEBase("application","octet-stream"); part.set_payload(f.read())
         encoders.encode_base64(part); part.add_header("Content-Disposition",f"attachment; filename={Path(attachment_path).name}"); msg.attach(part)
@@ -60,8 +73,7 @@ def index():
     c=cfg(); props=c.properties or []
     doc_types=sorted({v for v in c.category_folders.values()})
     doc_types+=[t for t in ["email","document"] if t not in doc_types]
-    ec=c.raw.get("email",{}) or {}; co=c.raw.get("company",{}) or {}
-    logo_file=co.get("logo","")
+    ec=c.raw.get("email",{}) or {}; co=c.raw.get("company",{}) or {}; logo_file=co.get("logo","")
     return render_template("index.html",
         company=co.get("name") or c.raw.get("data_store",{}).get("display_name","SMB Search"),
         properties=props, doc_types=doc_types,
@@ -71,7 +83,7 @@ def index():
 @app.route("/assets/<path:filename>")
 def serve_asset(filename):
     p=ROOT/"assets"/filename
-    if not p.exists(): return "", 404
+    if not p.exists(): return "",404
     return send_file(str(p))
 
 # ── Search/Answer ──
@@ -105,7 +117,6 @@ def api_download():
 def api_email():
     data=req.get_json(force=True); to,docs=data.get("to","").strip(),data.get("docs",[])
     if not to: return jsonify({"error":"Email required"}),400
-    if not docs: return jsonify({"error":"No docs"}),400
     c=cfg(); lines=[]
     for d in docs:
         uri,title=d.get("uri",""),d.get("title","Document")
@@ -136,14 +147,13 @@ def api_draft_fill():
     if not tpl_path.exists(): return jsonify({"error":"Not found"}),404
     c=cfg()
     if not prop: prop=c.default_property
-    from drafting.engine import DraftingEngine, load_query_map
+    from drafting.engine import DraftingEngine,load_query_map
     qm=load_query_map(TEMPLATE_DIR/"queries.yaml"); text=tpl_path.read_text(encoding="utf-8")
     engine=DraftingEngine(c,property_=prop,delay=4.0,log=lambda x:None)
     try: filled,results=engine.fill(text,qm)
     except Exception as e: return jsonify({"error":str(e)}),500
     fields=[{"name":r.placeholder,"answer":r.answer,"ok":r.success} for r in results]
-    ok=sum(1 for r in results if r.success)
-    return jsonify({"fields":fields,"resolved":ok,"total":len(results),"template_id":tpl_id,"property":prop or ""})
+    return jsonify({"fields":fields,"resolved":sum(1 for r in results if r.success),"total":len(results),"template_id":tpl_id,"property":prop or ""})
 
 @app.route("/api/draft/pdf", methods=["POST"])
 def api_draft_pdf():
@@ -164,7 +174,7 @@ def api_draft_pdf():
     except Exception as e: return jsonify({"error":f"PDF failed: {e}"}),500
     resp={"pdf":pdf_name,"download_url":f"/api/draft/download/{pdf_name}"}
     if to_email:
-        err=_send_smtp(c,to_email,f"{tpl_id.replace('-',' ').title()} - {prop or 'Report'}",f"Attached report\n",str(pdf_path))
+        err=_send_smtp(c,to_email,f"{tpl_id.replace('-',' ').title()} - {prop or ''}","Attached report\n",str(pdf_path))
         if err: resp["email_error"]=err
         else: resp["emailed_to"]=to_email
     return jsonify(resp)
@@ -174,6 +184,37 @@ def api_draft_download(filename):
     p=OUTPUT_DIR/filename
     if not p.exists(): return jsonify({"error":"Not found"}),404
     return send_file(str(p),as_attachment=True,download_name=filename)
+
+# ── Admin ──
+@app.route("/api/admin/login", methods=["POST"])
+def admin_login():
+    data=req.get_json(force=True); pw=data.get("password","")
+    c=cfg()
+    if str(pw)==_admin_password(c):
+        token=hashlib.sha256(os.urandom(32)).hexdigest()
+        _admin_tokens[token]=time.time()
+        return jsonify({"token":token})
+    return jsonify({"error":"Invalid password"}),401
+
+@app.route("/api/admin/stats")
+def admin_stats():
+    c=cfg()
+    if not _check_admin(c): return jsonify({"error":"Unauthorized"}),401
+    from web.admin import get_usage_stats
+    stats=get_usage_stats(c)
+    return jsonify({
+        "data_store":{"id":stats.data_store_id,"engine":stats.engine_id,"documents":stats.doc_count},
+        "storage":{"bucket":stats.bucket_name,"objects":stats.bucket_objects,"size_mb":round(stats.bucket_size_mb,2)},
+        "api_usage":{"today":stats.query_count_today,"this_month":stats.query_count_month},
+        "cost_estimates":{
+            "doc_hosting":round(stats.est_doc_hosting_cost,2),
+            "gcs_storage":round(stats.est_storage_cost,4),
+            "api_queries":round(stats.est_query_cost,2),
+            "total_monthly":round(stats.est_total_monthly,2),
+        },
+        "pricing":stats.pricing,
+        "errors":stats.errors,
+    })
 
 def create_app(): return app
 
