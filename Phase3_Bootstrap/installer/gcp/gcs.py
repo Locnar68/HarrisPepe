@@ -72,8 +72,17 @@ def _create_bucket(
     if dry_run:
         ui.note(f"[dry-run] would create gs://{name}")
         return
-    if not res.ok and "already exists" not in (res.stderr or "").lower():
+    
+    # Check if creation failed
+    if not res.ok:
+        err_text = (res.stderr or "").lower()
+        # Bucket already exists = success (409 conflict or "already exists" message)
+        if "already exists" in err_text or "409" in err_text or "not available" in err_text:
+            ui.success(f"bucket exists: gs://{name}")
+            return
+        # Real error
         raise RuntimeError(f"Failed to create bucket {name}: {res.stderr}")
+    
     ui.success(f"bucket created: gs://{name}")
 
 
