@@ -2,7 +2,7 @@
 Google Drive connector interview.
 
 Simplified: always use service-account mode, static MIME allowlist, ask only
-for folder IDs + schedule (text input, no arrow-key menu).
+for folder IDs + schedule (arrow-key selection menu).
 """
 
 from __future__ import annotations
@@ -49,19 +49,19 @@ def run(business: BusinessConfig, gcp: GCPConfig) -> ConnectorConfig:
     )
     folder_ids = [f.strip() for f in folder_ids_raw.split(",") if f.strip()]
 
-    ui.note(
-        "SYNC SCHEDULE (cron format: min hour dom mon dow)\n"
-        "  Common examples:\n"
-        "    0 */3 * * *   — every 3 hours\n"
-        "    0 */6 * * *   — every 6 hours\n"
-        "    0 8 * * *     — daily at 8am\n"
-        "    0 */1 * * *   — every hour\n"
+    cron = ui.ask_select(
+        "Sync frequency",
+        choices=[
+            "0 */3 * * *  (every 3 hours)",
+            "0 */6 * * *  (every 6 hours)",
+            "0 */8 * * *  (every 8 hours)",
+            "0 8 * * *    (once daily at 8am)",
+            "0 */1 * * *  (every hour)",
+        ],
+        default="0 8 * * *    (once daily at 8am)",
     )
-    cron = ui.ask_text(
-        "Sync frequency (cron)",
-        default="0 8 * * *",
-        help_text="Standard 5-field cron expression.",
-    )
+    # Extract just the cron expression (strip the description)
+    cron = cron.split()[0] + " " + cron.split()[1] + " " + cron.split()[2] + " " + cron.split()[3] + " " + cron.split()[4]
 
     return ConnectorConfig(
         name="gdrive",
