@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import timedelta
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request as flask_request
 from dotenv import load_dotenv
 
 # Load env from Phase3_Bootstrap
@@ -291,8 +291,8 @@ def api_status():
         parent = f"projects/{PROJECT_ID}/locations/global/collections/default_collection/dataStores/{DATA_STORE_ID}/branches/default_branch"
         
         # List documents to get count
-        request = discoveryengine.ListDocumentsRequest(parent=parent, page_size=10)
-        page_result = client.list_documents(request=request)
+        search_request = discoveryengine.ListDocumentsRequest(parent=parent, page_size=10)
+        page_result = client.list_documents(request=search_request)
         
         # Count documents
         doc_count = sum(1 for _ in page_result)
@@ -313,7 +313,7 @@ def api_status():
 @app.route("/api/query", methods=["POST"])
 def api_query():
     """Search and answer using Vertex AI Search"""
-    data = request.get_json(force=True)
+    data = flask_request.get_json(force=True)
     query = data.get("query", "").strip()
     
     if not query:
@@ -327,7 +327,7 @@ def api_query():
         
         # Search
         client = discoveryengine.SearchServiceClient()
-        request = discoveryengine.SearchRequest(
+        search_request = discoveryengine.SearchRequest(
             serving_config=SERVING_CONFIG,
             query=query,
             page_size=5,
@@ -339,7 +339,7 @@ def api_query():
             )
         )
         
-        response = client.search(request)
+        response = client.search(search_request)
         
         # Extract answer
         answer_text = "No answer found."
