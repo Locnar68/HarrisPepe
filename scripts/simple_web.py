@@ -63,6 +63,7 @@ HTML_TEMPLATE = '''
   .answer-text p{margin-bottom:.5rem;}
   .source-card{background:white;border:1px solid #e2e8f0;border-radius:8px;padding:12px;transition:all .15s;}
   .source-card:hover{border-color:#3b82f6;box-shadow:0 2px 8px rgba(59,130,246,0.1);}
+  @keyframes spin{to{transform:rotate(360deg);}} .spinner{animation:spin 1s linear infinite;display:inline-block;}
 </style>
 </head>
 <body class="bg-gray-50">
@@ -131,9 +132,12 @@ const SERVING_CONFIG = "{{ serving_config }}";
 const COMPANY_NAME = "{{ company_name }}";
 const REGION = "{{ region }}";
 
+let checkCount = 0;
+
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 
 async function checkDataStatus(){
+  checkCount++;
   try{
     const resp = await fetch('/api/status');
     const data = await resp.json();
@@ -145,14 +149,22 @@ async function checkDataStatus(){
       badge.className = 'status-badge bg-green-100 text-green-700';
       msg.style.display = 'none';
     }else{
-      badge.textContent = '⚠ No documents';
-      badge.className = 'status-badge bg-yellow-100 text-yellow-700';
-      msg.style.display = 'block';
-      
-      const syncJob = data.sync_job || (COMPANY_NAME + '-gdrive-sync').substring(0, 63);
-      const region = data.region || REGION || 'us-east1';
-      
-      msg.innerHTML = '<p class="text-sm text-yellow-800"><strong>⚠️ No Documents Yet:</strong> Run <code class="px-2 py-0.5 bg-yellow-200 rounded text-xs">gcloud run jobs execute ' + syncJob + ' --region ' + region + '</code> to sync your Drive folder.</p>';
+      // Show indexing message for first 10 checks (5 minutes)
+      if(checkCount <= 10){
+        badge.innerHTML = '<span class="spinner">⏳</span> Indexing...';
+        badge.className = 'status-badge bg-blue-100 text-blue-700';
+        msg.style.display = 'block';
+        msg.innerHTML = '<p class="text-sm text-blue-800"><strong>⏳ Documents are being indexed...</strong><br>Drive sync is processing your files. This usually takes 2-5 minutes.<br><br>This page auto-refreshes every 30 seconds. Check back soon!</p>';
+      }else{
+        badge.textContent = '⚠ No documents';
+        badge.className = 'status-badge bg-yellow-100 text-yellow-700';
+        msg.style.display = 'block';
+        
+        const syncJob = data.sync_job || (COMPANY_NAME + '-gdrive-sync').substring(0, 63);
+        const region = data.region || REGION || 'us-east1';
+        
+        msg.innerHTML = '<p class="text-sm text-yellow-800"><strong>⚠️ Still No Documents</strong><br>The sync may have failed. Try running manually:<br><code class="px-2 py-0.5 bg-yellow-200 rounded text-xs">gcloud run jobs execute ' + syncJob + ' --region ' + region + '</code></p>';
+      }
     }
   }catch(e){
     document.getElementById('status-text').textContent = 'Offline';
