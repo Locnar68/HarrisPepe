@@ -394,3 +394,21 @@ For issues or questions:
 4. Contact Harris team for Phase 4 features
 
 **Built with ❤️ for seamless document search**
+
+---
+
+## 🆘 Troubleshooting
+
+Hit a snag? Run the diagnostic first:
+
+```powershell
+python scripts/diagnose.py
+```
+
+Common fixes:
+- **Uploads fail with 403** → python scripts/ensure_gcs_buckets.py (bucket name collision)
+- **Cloud Run job doesn't index** → python scripts/manual_sync.py (placeholder image still in place)
+- **UI says OFFLINE but data exists** → python scripts/test_rag.py (verifies backend independently)
+
+Full guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+Deep gotchas: [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md)
