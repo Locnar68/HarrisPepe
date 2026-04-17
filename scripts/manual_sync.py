@@ -1,49 +1,60 @@
 """
 Manual Drive → GCS → Vertex AI Search sync.
 
-Use this when the Cloud Run job is unavailable or you want to sync on demand.
-This script uses the service account for ALL operations and requires:
-  - Drive folder shared with 'Anyone with the link can view' (or SA added explicitly)
-  - SA has roles/storage.admin and roles/discoveryengine.admin on the project
-  - GCS bucket exists (run scripts/ensure_gcs_buckets.py first if unsure)
+Use this when the Cloud Run job is unavailable (placeholder image) or you
+want to sync on demand. Uses the service account for ALL operations.
 
-Usage (from repo root):
+Requires:
+  - Drive folder shared with 'Anyone with the link can view', OR the SA
+    added to the folder as Viewer explicitly
+  - SA has roles/storage.admin and roles/discoveryengine.admin on the project
+  - The GCS raw bucket exists (run scripts/ensure_gcs_buckets.py if unsure)
+
+Usage:
     python scripts/manual_sync.py
 
-Reads config from Phase3_Bootstrap/secrets/.env
+Env discovery: $VERTEX_ENV_FILE > <cwd>/Phase3_Bootstrap/secrets/.env >
+               <cwd>/.env > <repo>/Phase3_Bootstrap/secrets/.env
 """
+from __future__ import annotations
+
 import io
 import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-from google.cloud import discoveryengine_v1, storage
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _env import load_or_die  # noqa: E402
+
+from google.cloud import discoveryengine_v1, storage  # noqa: E402
+from google.oauth2 import service_account  # noqa: E402
+from googleapiclient.discovery import build  # noqa: E402
+from googleapiclient.http import MediaIoBaseDownload  # noqa: E402
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parent.parent
-    env_path = repo_root / "Phase3_Bootstrap" / "secrets" / ".env"
-    sa_key = repo_root / "Phase3_Bootstrap" / "secrets" / "service-account.json"
+    env_path, sa_key = load_or_die()
 
-    if not env_path.exists():
-        print(f"✗ Missing .env at {env_path}")
-        return 1
-    if not sa_key.exists():
-        print(f"✗ Missing service account key at {sa_key}")
-        return 1
-
-    load_dotenv(env_path)
     project_id = os.getenv("GCP_PROJECT_ID")
     bucket_raw = os.getenv("GCS_BUCKET_RAW")
     data_store_id = os.getenv("VERTEX_DATA_STORE_ID")
-    folder_ids = [f.strip() for f in (os.getenv("GDRIVE_FOLDER_IDS") or "").split(",") if f.strip()]
+    folder_ids = [
+        f.strip()
+        for f in (os.getenv("GDRIVE_FOLDER_IDS") or "").split(",")
+        if f.strip()
+    ]
 
-    if not (project_id and bucket_raw and data_store_id and folder_ids):
-        print("✗ Missing required env vars: GCP_PROJECT_ID, GCS_BUCKET_RAW, VERTEX_DATA_STORE_ID, GDRIVE_FOLDER_IDS")
+    missing = [
+        k for k, v in [
+            ("GCP_PROJECT_ID", project_id),
+            ("GCS_BUCKET_RAW", bucket_raw),
+            ("VERTEX_DATA_STORE_ID", data_store_id),
+            ("GDRIVE_FOLDER_IDS", folder_ids),
+        ] if not v
+    ]
+    if missing:
+        print(f"✗ Missing required env vars: {', '.join(missing)}")
+        print(f"  loaded from: {env_path}")
         return 1
 
     print(f"📂 Manual sync → Vertex AI Search")
@@ -52,7 +63,7 @@ def main() -> int:
     print(f"   Data Store: {data_store_id}")
     print(f"   Folders:    {folder_ids}")
 
-    # Hybrid-safe: service account with both Drive read-only and cloud-platform scopes
+    # Explicit SA creds with the right scope for each service.
     drive_creds = service_account.Credentials.from_service_account_file(
         str(sa_key), scopes=["https://www.googleapis.com/auth/drive.readonly"]
     )
@@ -73,12 +84,21 @@ def main() -> int:
 
     total_indexed = 0
     total_skipped = 0
+    total_failed = 0
     for folder_id in folder_ids:
         print(f"🔍 Scanning folder: {folder_id}")
-        results = drive.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
-            fields="files(id, name, mimeType)",
-        ).execute()
+        try:
+            results = drive.files().list(
+                q=f"'{folder_id}' in parents and trashed=false",
+                fields="files(id, name, mimeType)",
+            ).execute()
+        except Exception as e:
+            print(f"   ✗ Drive list failed: {e}")
+            print(f"     → Share this folder with {drive_creds.service_account_email}")
+            print(f"       (or set it to 'Anyone with the link can view').")
+            total_failed += 1
+            continue
+
         files = results.get("files", [])
         print(f"   Found {len(files)} files\n")
 
@@ -86,24 +106,37 @@ def main() -> int:
             print(f"   📄 {file['name']}")
 
             # 1. Download from Drive
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, drive.files().get_media(fileId=file["id"]))
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-                if status:
-                    print(f"      ↓ Download: {int(status.progress() * 100)}%")
+            try:
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(
+                    fh, drive.files().get_media(fileId=file["id"])
+                )
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                    if status:
+                        print(f"      ↓ Download: {int(status.progress() * 100)}%")
+            except Exception as e:
+                print(f"      ✗ Download failed: {e}\n")
+                total_failed += 1
+                continue
 
             # 2. Upload to GCS
             blob_name = f"drive/{folder_id}/{file['name']}"
             blob = bucket.blob(blob_name)
             fh.seek(0)
-            print(f"      ↑ Uploading to GCS...")
-            blob.upload_from_file(fh, content_type=file["mimeType"])
+            try:
+                print(f"      ↑ Uploading to GCS...")
+                blob.upload_from_file(fh, content_type=file["mimeType"])
+            except Exception as e:
+                print(f"      ✗ GCS upload failed: {e}\n")
+                total_failed += 1
+                continue
+
             gcs_uri = f"gs://{bucket_raw}/{blob_name}"
             print(f"      ✓ {gcs_uri}")
 
-            # 3. Create document in Vertex AI Search
+            # 3. Create the document in Vertex AI Search
             document = discoveryengine_v1.Document(
                 id=file["id"],
                 name=f"{parent}/documents/{file['id']}",
@@ -133,10 +166,14 @@ def main() -> int:
                     total_skipped += 1
                 else:
                     print(f"      ⚠ Index failed: {e}\n")
+                    total_failed += 1
 
-    print(f"✅ Sync complete: {total_indexed} indexed, {total_skipped} already present")
-    print(f"   Indexing completes in 5–15 min. Check with: python scripts/check_index.py")
-    return 0
+    print(f"✅ Sync complete: "
+          f"{total_indexed} indexed, {total_skipped} already present, "
+          f"{total_failed} failed")
+    print(f"   Indexing finishes in 5–15 min. Verify with: "
+          f"python scripts/check_index.py")
+    return 0 if total_failed == 0 else 2
 
 
 if __name__ == "__main__":
