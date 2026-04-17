@@ -1,12 +1,10 @@
-"""Simple Flask web UI for Vertex AI Search - reads from Phase3 .env
+"""Simple Flask web UI for Vertex AI Search.
 
-Fixes over v1:
-  - Explicit service-account credentials (no ADC ambiguity)
-  - Status endpoint distinguishes 'no docs', 'config error', and actual offline
-  - Query endpoint uses extractive_content_spec + adversarial/non-summary guards
-  - 'No results' from Gemini is translated to a helpful, honest message
-  - Sources link to the Drive URL from struct_data (not the Vertex resource path)
-  - Welcome prompts removed (generic prompts were misleading users)
+Env file discovery (first match wins):
+  1. $VERTEX_ENV_FILE (explicit override)
+  2. <cwd>/Phase3_Bootstrap/secrets/.env         (typical DELETE4/DELETE5 workspace)
+  3. <cwd>/.env                                   (user-provided at cwd root)
+  4. <repo>/Phase3_Bootstrap/secrets/.env         (repo-local, for dev setups)
 """
 import os
 import sys
@@ -14,27 +12,50 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template_string, request as flask_request
 from dotenv import load_dotenv
 
-# Load env from Phase3_Bootstrap
-REPO_ROOT = Path(__file__).parent.parent
-BOOTSTRAP_ENV = REPO_ROOT / "Phase3_Bootstrap" / "secrets" / ".env"
-SA_KEY_PATH = REPO_ROOT / "Phase3_Bootstrap" / "secrets" / "service-account.json"
 
-print(f"Looking for .env at: {BOOTSTRAP_ENV}")
-if BOOTSTRAP_ENV.exists():
-    print(f"✓ Found .env file, loading...")
+def discover_env_file() -> Path | None:
+    """Find the .env to use. Returns None if none found."""
+    candidates = []
+
+    override = os.environ.get("VERTEX_ENV_FILE")
+    if override:
+        candidates.append(Path(override))
+
+    cwd = Path.cwd()
+    candidates.append(cwd / "Phase3_Bootstrap" / "secrets" / ".env")
+    candidates.append(cwd / ".env")
+
+    repo_root = Path(__file__).resolve().parent.parent
+    candidates.append(repo_root / "Phase3_Bootstrap" / "secrets" / ".env")
+
+    for c in candidates:
+        try:
+            if c.exists():
+                return c
+        except Exception:
+            continue
+    return None
+
+
+BOOTSTRAP_ENV = discover_env_file()
+if BOOTSTRAP_ENV:
+    print(f"✓ Loading env from: {BOOTSTRAP_ENV}")
     load_dotenv(BOOTSTRAP_ENV)
+    SA_KEY_PATH = BOOTSTRAP_ENV.parent / "service-account.json"
 else:
-    alt_env = Path.cwd() / ".." / "Phase3_Bootstrap" / "secrets" / ".env"
-    if alt_env.exists():
-        print(f"✓ Found .env at {alt_env}")
-        load_dotenv(alt_env)
-        BOOTSTRAP_ENV = alt_env
-        SA_KEY_PATH = alt_env.parent / "service-account.json"
+    print("⚠ No .env file found. Searched:")
+    print("    $VERTEX_ENV_FILE (not set)" if not os.environ.get("VERTEX_ENV_FILE") else f"    $VERTEX_ENV_FILE = {os.environ.get('VERTEX_ENV_FILE')}")
+    print(f"    {Path.cwd() / 'Phase3_Bootstrap' / 'secrets' / '.env'}")
+    print(f"    {Path.cwd() / '.env'}")
+    print(f"    {Path(__file__).resolve().parent.parent / 'Phase3_Bootstrap' / 'secrets' / '.env'}")
+    print("")
+    print("Fix: either cd into your workspace (e.g. D:\\LAB\\DELETE4) before running,")
+    print("     or set VERTEX_ENV_FILE to the full path of your .env.")
+    SA_KEY_PATH = Path(__file__).resolve().parent.parent / "Phase3_Bootstrap" / "secrets" / "service-account.json"
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Read config from environment
 COMPANY_NAME = os.getenv("COMPANY_NAME", "Document Search")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 DATA_STORE_ID = os.getenv("VERTEX_DATA_STORE_ID")
@@ -43,12 +64,12 @@ SERVING_CONFIG = os.getenv("VERTEX_SERVING_CONFIG")
 GCS_RAW_BUCKET = os.getenv("GCS_BUCKET_RAW")
 GCP_REGION = os.getenv("GCP_REGION", "us-east1")
 
-print(f"\nConfiguration loaded:")
+print(f"\nConfiguration:")
 print(f"  Company:    {COMPANY_NAME}")
-print(f"  Project:    {PROJECT_ID}")
+print(f"  Project:    {PROJECT_ID or '(missing)'}")
 print(f"  Region:     {GCP_REGION}")
-print(f"  Data Store: {DATA_STORE_ID}")
-print(f"  Engine:     {ENGINE_ID}")
+print(f"  Data Store: {DATA_STORE_ID or '(missing)'}")
+print(f"  Engine:     {ENGINE_ID or '(missing)'}")
 print(f"  SA Key:     {SA_KEY_PATH} ({'exists' if SA_KEY_PATH.exists() else 'MISSING'})")
 print()
 
@@ -57,8 +78,6 @@ print()
 _CREDS = None
 
 def get_creds():
-    """Load SA credentials once and reuse. Explicit beats ADC here because we
-    want deterministic behavior regardless of the parent process env."""
     global _CREDS
     if _CREDS is None:
         from google.oauth2 import service_account
@@ -68,7 +87,6 @@ def get_creds():
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
         else:
-            # Fall back to ADC if no key file
             import google.auth
             _CREDS, _ = google.auth.default(
                 scopes=["https://www.googleapis.com/auth/cloud-platform"]
@@ -196,13 +214,11 @@ async function checkDataStatus(){
 
   let resp;
   try{
-    // Timeout so a hung backend doesn't leave the badge stuck in 'Checking...'
     const controller = new AbortController();
     const to = setTimeout(() => controller.abort(), 10000);
     resp = await fetch('/api/status', {signal: controller.signal});
     clearTimeout(to);
   }catch(e){
-    // Only true network failures land here (server down, no response)
     badge.textContent = 'Offline';
     badge.className = 'status-badge bg-red-100 text-red-700';
     return;
@@ -220,7 +236,8 @@ async function checkDataStatus(){
     badge.textContent = 'Config error';
     badge.className = 'status-badge bg-red-100 text-red-700';
     msg.style.display = 'block';
-    msg.innerHTML = '<p class="text-sm text-red-800"><strong>⚠️ Backend error:</strong> ' + esc(data.error) + '</p>';
+    const hint = data.hint ? '<br><br><strong>Fix:</strong> ' + esc(data.hint) : '';
+    msg.innerHTML = '<p class="text-sm text-red-800"><strong>⚠️ Backend error:</strong> ' + esc(data.error) + hint + '</p>';
     return;
   }
 
@@ -231,7 +248,6 @@ async function checkDataStatus(){
     return;
   }
 
-  // No documents yet
   if(checkCount <= 10){
     badge.innerHTML = '<span class="spinner">⏳</span> Indexing...';
     badge.className = 'status-badge bg-blue-100 text-blue-700';
@@ -324,7 +340,6 @@ async function sendQ(){
   }
 }
 
-// Init
 checkDataStatus();
 setInterval(checkDataStatus, 30000);
 </script>
@@ -345,9 +360,18 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    """Return current doc count in the data store. Fast-fail on config errors."""
+    if not BOOTSTRAP_ENV:
+        return jsonify({
+            "error": "No .env file found",
+            "hint": "cd into your workspace (e.g. D:\\LAB\\DELETE4) before running, or set VERTEX_ENV_FILE to the full path.",
+            "documents": 0,
+        })
     if not (PROJECT_ID and DATA_STORE_ID):
-        return jsonify({"error": "Configuration not loaded - check .env file", "documents": 0})
+        return jsonify({
+            "error": f"Missing required variables in {BOOTSTRAP_ENV}",
+            "hint": "Ensure GCP_PROJECT_ID and VERTEX_DATA_STORE_ID are set.",
+            "documents": 0,
+        })
 
     try:
         from google.cloud import discoveryengine_v1 as discoveryengine
@@ -356,7 +380,6 @@ def api_status():
             f"projects/{PROJECT_ID}/locations/global"
             f"/collections/default_collection/dataStores/{DATA_STORE_ID}/branches/default_branch"
         )
-        # Use page_size=100 and materialize only one page — fast even for many docs
         req = discoveryengine.ListDocumentsRequest(parent=parent, page_size=100)
         page = next(iter(client.list_documents(request=req).pages), None)
         doc_count = len(list(page)) if page else 0
@@ -367,7 +390,6 @@ def api_status():
 
 @app.route("/api/query", methods=["POST"])
 def api_query():
-    """Search + Gemini summary with full RAG spec."""
     data = flask_request.get_json(force=True)
     query = (data or {}).get("query", "").strip()
     if not query:
@@ -407,18 +429,15 @@ def api_query():
 
         response = client.search(req)
 
-        # Gemini summary
         answer_text = ""
         if hasattr(response, "summary") and response.summary:
             answer_text = response.summary.summary_text or ""
 
-        # Extract sources from results
         sources = []
         for result in response.results:
             doc = result.document
             title = "Document"
             drive_uri = ""
-            # Prefer struct_data title / uri (populated by manual_sync.py)
             if doc.struct_data:
                 try:
                     sd = doc.struct_data
@@ -427,7 +446,6 @@ def api_query():
                         drive_uri = sd.get("uri", "") or ""
                 except Exception:
                     pass
-            # Fall back to derived_struct_data for title
             if title == "Document" and doc.derived_struct_data:
                 try:
                     dsd = doc.derived_struct_data
@@ -437,7 +455,6 @@ def api_query():
                     pass
             sources.append({"title": title, "uri": drive_uri})
 
-        # Dedupe sources by title (same doc can appear multiple times for multi-chunk hits)
         seen = set()
         unique_sources = []
         for s in sources:
