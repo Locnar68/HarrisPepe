@@ -8,8 +8,11 @@ import argparse
 import os
 import sys
 import traceback
+import webbrowser
+import subprocess
 from pathlib import Path
 from typing import Optional
+from threading import Timer
 
 from installer import __version__
 from installer.banner import print_banner, print_completion
@@ -184,6 +187,25 @@ def run(args: argparse.Namespace) -> int:
 
     print_completion(cfg, install_path)
     log.info("Phase 3 bootstrap complete.")
+
+    # Auto-launch web UI
+    if not args.dry_run:
+        web_script = install_path.parent.parent / "scripts" / "simple_web.py"
+        if web_script.exists():
+            ui.note(f"\n🚀 Launching web UI at http://localhost:5000")
+            ui.note("Press Ctrl+C in the web UI window to stop it.\n")
+            
+            # Open browser after 2 seconds
+            Timer(2.0, lambda: webbrowser.open("http://localhost:5000")).start()
+            
+            # Launch web server (this will block until Ctrl+C)
+            try:
+                subprocess.run([sys.executable, str(web_script)], check=False)
+            except KeyboardInterrupt:
+                ui.note("\nWeb UI stopped.")
+        else:
+            ui.warn(f"Web UI not found at {web_script}")
+
     return 0
 
 

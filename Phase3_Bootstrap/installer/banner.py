@@ -97,14 +97,18 @@ def _next_actions_text(cfg: Any, install_path: Path) -> str:
         folder_ids = gdrive.options.get("folder_ids", [])
         if folder_ids:
             lines.append(
-                f"{step}. Share each Drive folder with the service account "
-                f"(Viewer role):\n"
-                f"   SA email: {sa_email}\n"
+                f"{step}. Share Drive folder (choose ONE method):\n"
+                f"   \n"
+                f"   EASIEST - Share with 'Anyone with the link' (Viewer):\n"
                 + "\n".join(
-                    f"   - https://drive.google.com/drive/folders/{fid}"
+                    f"   - Open: https://drive.google.com/drive/folders/{fid}"
                     for fid in folder_ids
                 ) +
-                "\n   OR run: .\\share-drive-folder.ps1"
+                "\n   - Click Share > Change to 'Anyone with the link' > Viewer > Done\n"
+                f"   \n"
+                f"   OR - Share directly with service account:\n"
+                f"   - SA email: {sa_email}\n"
+                f"   - Run: .\\share-drive-folder.ps1 (requires folder owner permissions)"
             )
         else:
             lines.append(
@@ -121,23 +125,7 @@ def _next_actions_text(cfg: Any, install_path: Path) -> str:
     )
     step += 1
 
-    # Manual sync command for gdrive
-    gdrive = cfg.connector("gdrive")
-    if gdrive and gdrive.enabled:
-        job_name = f"{cfg.business.display_name}-gdrive-sync"[:63]
-        lines.append(
-            f"{step}. Kick off the first Drive sync manually (or wait for Scheduler):\n"
-            f"   gcloud run jobs execute {job_name} --region {cfg.gcp.region}"
-        )
-        step += 1
-
-    # Web UI launch
-    lines.append(
-        f"{step}. Launch the web UI to test queries:\n"
-        f"   cd {install_path.parent.parent}\\scripts\n"
-        f"   python simple_web.py\n"
-        f"   (Opens browser at http://localhost:5000)"
-    )
-    step += 1
-
+    # Manual sync command for gdrive - REMOVED since auto-sync runs
+    # Web UI will auto-launch, so no need to show manual command
+    
     return "\n\n".join(lines)
