@@ -36,9 +36,9 @@ def deploy_cloud_run_job(
     dry_run: bool,
 ) -> None:
     """Create (or update) a Cloud Run job for this connector."""
-    env_args = []
-    for k, v in env_vars.items():
-        env_args += ["--set-env-vars", f"{k}={v}"]
+    # Build comma-separated env vars for single --set-env-vars flag
+    env_pairs = [f"{k}={v}" for k, v in env_vars.items()]
+    env_flag = ",".join(env_pairs) if env_pairs else ""
 
     # Idempotent: describe first; update if exists, create otherwise.
     exists_res = shell.run(
@@ -55,8 +55,11 @@ def deploy_cloud_run_job(
             f"--project={cfg.gcp.project_id}",
             f"--service-account={cfg.service_account.email}",
             "--max-retries=3",
-            "--task-timeout=3600",
-            *env_args]
+            "--task-timeout=3600"]
+    
+    # Add env vars as single comma-separated flag
+    if env_flag:
+        args.append(f"--set-env-vars={env_flag}")
 
     res = shell.run(args, check=False, timeout=180, dry_run=dry_run)
     if dry_run:

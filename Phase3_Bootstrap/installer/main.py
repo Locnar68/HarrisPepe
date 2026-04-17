@@ -164,6 +164,24 @@ def run(args: argparse.Namespace) -> int:
         _report.emit(cfg, install_path=install_path)
         state.mark_done(Step.REPORT)
 
+    # Auto-trigger initial Drive sync if enabled
+    from installer.utils import shell, ui
+    gdrive = cfg.connector("gdrive")
+    if gdrive and gdrive.enabled and not args.dry_run:
+        job_name = f"{cfg.business.display_name}-gdrive-sync"[:63]
+        ui.note(f"\n🔄 Triggering initial Drive sync: {job_name}")
+        res = shell.run(
+            ["gcloud", "run", "jobs", "execute", job_name,
+             f"--region={cfg.gcp.region}",
+             f"--project={cfg.gcp.project_id}"],
+            check=False, timeout=30
+        )
+        if res.ok:
+            ui.success("Initial sync started! Documents will appear in ~2-5 minutes.")
+        else:
+            ui.warn(f"Sync trigger failed: {res.stderr.strip()[:200]}")
+            ui.note(f"Run manually: gcloud run jobs execute {job_name} --region {cfg.gcp.region}")
+
     print_completion(cfg, install_path)
     log.info("Phase 3 bootstrap complete.")
     return 0
