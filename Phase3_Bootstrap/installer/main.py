@@ -190,7 +190,11 @@ def run(args: argparse.Namespace) -> int:
 
     # Auto-launch web UI
     if not args.dry_run:
-        web_script = install_path.parent.parent / "scripts" / "simple_web.py"
+        # FIX: Use .parent instead of .parent.parent
+        # install_path = D:\LAB\DELETE3\Phase3_Bootstrap
+        # install_path.parent = D:\LAB\DELETE3
+        # web_script = D:\LAB\DELETE3\scripts\simple_web.py
+        web_script = install_path.parent / "scripts" / "simple_web.py"
         if web_script.exists():
             ui.note(f"\n🚀 Launching web UI at http://localhost:5000")
             ui.note("Press Ctrl+C in the web UI window to stop it.\n")
