@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import traceback
 import webbrowser
-import subprocess
 from pathlib import Path
 from typing import Optional
 from threading import Timer
@@ -115,6 +115,8 @@ def run(args: argparse.Namespace) -> int:
     from installer.gcp import projects
     if not state.is_done(Step.PROJECT):
         projects.ensure_project(cfg, dry_run=args.dry_run)
+        # Persist project_number now that it's populated
+        save_config(cfg, config_path)
         state.mark_done(Step.PROJECT)
 
     from installer.gcp import billing
@@ -138,6 +140,10 @@ def run(args: argparse.Namespace) -> int:
     from installer.gcp import gcs
     if not state.is_done(Step.GCS):
         gcs.ensure_buckets(cfg, dry_run=args.dry_run)
+        # Persist any bucket-name mutations from collision auto-retry so
+        # downstream steps (secret_manager, connectors, report / .env writer)
+        # and future `--resume` runs all see the real bucket names.
+        save_config(cfg, config_path)
         state.mark_done(Step.GCS)
 
     from installer.gcp import secret_manager
@@ -149,6 +155,8 @@ def run(args: argparse.Namespace) -> int:
     from installer.gcp import data_store
     if not state.is_done(Step.DATA_STORE):
         data_store.ensure_data_store(cfg, dry_run=args.dry_run)
+        # data_store may bump the ID (-v2, -v3) on reserved-ID conflict
+        save_config(cfg, config_path)
         state.mark_done(Step.DATA_STORE)
 
     from installer.gcp import engine
@@ -167,41 +175,51 @@ def run(args: argparse.Namespace) -> int:
         _report.emit(cfg, install_path=install_path)
         state.mark_done(Step.REPORT)
 
-    # Auto-trigger initial Drive sync if enabled
-    from installer.utils import shell, ui
+    # -----------------------------------------------------------------
+    # Initial Drive → GCS → Vertex sync
+    #
+    # We run scripts/manual_sync.py directly rather than triggering the
+    # Cloud Run job, because the job still runs the placeholder image
+    # (`gcr.io/cloudrun/hello`) at this point in the pipeline — the
+    # operator replaces the image later, after CI builds a real one.
+    # manual_sync.py reads the .env + SA key we just wrote and actually
+    # indexes documents end-to-end, so the operator immediately sees
+    # results in the web UI instead of an empty data store.
+    # -----------------------------------------------------------------
+    from installer.utils import ui
     gdrive = cfg.connector("gdrive")
     if gdrive and gdrive.enabled and not args.dry_run:
-        job_name = f"{cfg.business.display_name}-gdrive-sync"[:63]
-        ui.note(f"\n🔄 Triggering initial Drive sync: {job_name}")
-        res = shell.run(
-            ["gcloud", "run", "jobs", "execute", job_name,
-             f"--region={cfg.gcp.region}",
-             f"--project={cfg.gcp.project_id}"],
-            check=False, timeout=30
-        )
-        if res.ok:
-            ui.success("Initial sync started! Documents will appear in ~2-5 minutes.")
+        manual_sync = install_path.parent / "scripts" / "manual_sync.py"
+        if manual_sync.exists():
+            ui.note(f"\n🔄 Running initial Drive → GCS → Vertex sync...")
+            ui.note(f"   (via {manual_sync})\n")
+            rc = subprocess.call([sys.executable, str(manual_sync)])
+            if rc == 0:
+                ui.success("Initial sync complete. Indexing finishes in "
+                           "5–15 min; verify with `python scripts/check_index.py`.")
+            else:
+                ui.warn(f"Initial sync exited with code {rc}.")
+                ui.note(f"Retry manually: python {manual_sync}")
         else:
-            ui.warn(f"Sync trigger failed: {res.stderr.strip()[:200]}")
-            ui.note(f"Run manually: gcloud run jobs execute {job_name} --region {cfg.gcp.region}")
+            ui.warn(f"manual_sync.py not found at {manual_sync} — skipping initial sync.")
+            ui.note("Once the script is available, run: python scripts/manual_sync.py")
 
     print_completion(cfg, install_path)
     log.info("Phase 3 bootstrap complete.")
 
     # Auto-launch web UI
     if not args.dry_run:
-        # FIX: Use .parent instead of .parent.parent
-        # install_path = D:\LAB\DELETE3\Phase3_Bootstrap
-        # install_path.parent = D:\LAB\DELETE3
-        # web_script = D:\LAB\DELETE3\scripts\simple_web.py
+        # install_path = <repo>/Phase3_Bootstrap
+        # install_path.parent = <repo>
+        # web_script = <repo>/scripts/simple_web.py
         web_script = install_path.parent / "scripts" / "simple_web.py"
         if web_script.exists():
             ui.note(f"\n🚀 Launching web UI at http://localhost:5000")
             ui.note("Press Ctrl+C in the web UI window to stop it.\n")
-            
+
             # Open browser after 2 seconds
             Timer(2.0, lambda: webbrowser.open("http://localhost:5000")).start()
-            
+
             # Launch web server (this will block until Ctrl+C)
             try:
                 subprocess.run([sys.executable, str(web_script)], check=False)

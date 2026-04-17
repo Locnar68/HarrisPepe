@@ -11,7 +11,7 @@ Section order (matters — later sections depend on earlier ones):
     2. Contact
     3. GCP (project, billing, region)
     4. Service account (name is derived from business display_name)
-    5. Storage (bucket names are derived from business display_name)
+    5. Storage (bucket names are derived from gcp.project_id for uniqueness)
     6. Vertex AI Search (data store, engine, tier, layout parser)
     7. Connectors menu  →  per-enabled connector questions
     8. Security / final review
@@ -74,8 +74,9 @@ def run_interview(
     from installer.interview import service_account as _sa
     service_account = _sa.run(business, gcp)
 
-    # ---- 2e. Storage -----------------------------------------------------
-    storage = _storage.run(business)
+    # ---- 2e. Storage (needs gcp.project_id to generate collision-safe
+    #                   default bucket names) ------------------------------
+    storage = _storage.run(business, gcp)
 
     # ---- 2f. Vertex AI Search -------------------------------------------
     vertex = _vertex.run(business)

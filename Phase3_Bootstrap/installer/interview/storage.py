@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
-from installer.config.schema import BusinessConfig, StorageConfig
+from installer.config.schema import BusinessConfig, GCPConfig, StorageConfig
 from installer.utils import ui
 from installer.validators import gcs_bucket_name
 
 
-def run(business: BusinessConfig) -> StorageConfig:
+def run(business: BusinessConfig, gcp: GCPConfig) -> StorageConfig:
     ui.section(
         "2e — Storage (GCS)",
         "Two buckets are required: 'raw' for direct connector dumps, 'processed' "
         "for normalized docs.",
     )
 
-    prefix = business.display_name
+    # Use project_id as bucket prefix. Project IDs are already globally unique
+    # in GCP, so buckets derived from them inherit that uniqueness. This avoids
+    # the common collision where `{display_name}-rag-raw` is already taken
+    # globally by someone else's project (and the create silently succeeds as
+    # "bucket exists" while actually pointing at a bucket we cannot write to).
+    prefix = gcp.project_id
     raw_bucket = ui.ask_text(
         "Raw bucket name",
         default=f"{prefix}-rag-raw",
         help_text="Must be globally unique across all of GCS. 3–63 chars, "
-                  "lowercase letters/digits/dashes/underscores/dots.",
+                  "lowercase letters/digits/dashes/underscores/dots. "
+                  "Prefixing with your project ID guarantees uniqueness.",
         validator=gcs_bucket_name,
     )
     processed_bucket = ui.ask_text(
