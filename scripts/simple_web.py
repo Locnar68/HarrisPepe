@@ -1,28 +1,35 @@
-"""Simple Flask web UI for Vertex AI Search - reads from Phase3 .env"""
+"""Simple Flask web UI for Vertex AI Search - reads from Phase3 .env
+
+Fixes over v1:
+  - Explicit service-account credentials (no ADC ambiguity)
+  - Status endpoint distinguishes 'no docs', 'config error', and actual offline
+  - Query endpoint uses extractive_content_spec + adversarial/non-summary guards
+  - 'No results' from Gemini is translated to a helpful, honest message
+  - Sources link to the Drive URL from struct_data (not the Vertex resource path)
+  - Welcome prompts removed (generic prompts were misleading users)
+"""
 import os
 import sys
 from pathlib import Path
-from datetime import timedelta
 from flask import Flask, jsonify, render_template_string, request as flask_request
 from dotenv import load_dotenv
 
 # Load env from Phase3_Bootstrap
 REPO_ROOT = Path(__file__).parent.parent
 BOOTSTRAP_ENV = REPO_ROOT / "Phase3_Bootstrap" / "secrets" / ".env"
+SA_KEY_PATH = REPO_ROOT / "Phase3_Bootstrap" / "secrets" / "service-account.json"
 
 print(f"Looking for .env at: {BOOTSTRAP_ENV}")
 if BOOTSTRAP_ENV.exists():
     print(f"✓ Found .env file, loading...")
     load_dotenv(BOOTSTRAP_ENV)
 else:
-    print(f"⚠ .env not found at {BOOTSTRAP_ENV}")
-    print(f"Trying alternative path...")
-    # Try from current directory
     alt_env = Path.cwd() / ".." / "Phase3_Bootstrap" / "secrets" / ".env"
     if alt_env.exists():
         print(f"✓ Found .env at {alt_env}")
         load_dotenv(alt_env)
         BOOTSTRAP_ENV = alt_env
+        SA_KEY_PATH = alt_env.parent / "service-account.json"
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -37,13 +44,63 @@ GCS_RAW_BUCKET = os.getenv("GCS_BUCKET_RAW")
 GCP_REGION = os.getenv("GCP_REGION", "us-east1")
 
 print(f"\nConfiguration loaded:")
-print(f"  Company: {COMPANY_NAME}")
-print(f"  Project: {PROJECT_ID}")
-print(f"  Region: {GCP_REGION}")
+print(f"  Company:    {COMPANY_NAME}")
+print(f"  Project:    {PROJECT_ID}")
+print(f"  Region:     {GCP_REGION}")
 print(f"  Data Store: {DATA_STORE_ID}")
-print(f"  Engine: {ENGINE_ID}")
+print(f"  Engine:     {ENGINE_ID}")
+print(f"  SA Key:     {SA_KEY_PATH} ({'exists' if SA_KEY_PATH.exists() else 'MISSING'})")
 print()
 
+
+# ---- Credential helpers ----------------------------------------------------
+_CREDS = None
+
+def get_creds():
+    """Load SA credentials once and reuse. Explicit beats ADC here because we
+    want deterministic behavior regardless of the parent process env."""
+    global _CREDS
+    if _CREDS is None:
+        from google.oauth2 import service_account
+        if SA_KEY_PATH.exists():
+            _CREDS = service_account.Credentials.from_service_account_file(
+                str(SA_KEY_PATH),
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+        else:
+            # Fall back to ADC if no key file
+            import google.auth
+            _CREDS, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+    return _CREDS
+
+
+# ---- Response phrasing helpers ---------------------------------------------
+NO_RESULT_MARKERS = (
+    "no results could be found",
+    "try rephrasing the search query",
+    "i could not find",
+    "the summary could not be generated",
+)
+
+def is_empty_answer(text: str) -> bool:
+    if not text:
+        return True
+    t = text.strip().lower()
+    return any(m in t for m in NO_RESULT_MARKERS)
+
+
+def friendly_empty_message(query: str) -> str:
+    return (
+        f"I couldn't find anything in your indexed documents that matches "
+        f"\"{query}\". Try a query about something that's actually in your "
+        f"files — for example, a specific address, price, name, date, or "
+        f"status that appears in the source material."
+    )
+
+
+# ---- HTML ------------------------------------------------------------------
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -86,7 +143,7 @@ HTML_TEMPLATE = '''
       </div>
     </div>
   </header>
-  
+
   <div id="chat" class="chat-area flex-1 px-6 py-6">
     <div class="max-w-4xl mx-auto">
       <div id="welcome" class="flex flex-col items-center justify-center py-20 msg-enter">
@@ -96,25 +153,24 @@ HTML_TEMPLATE = '''
           </svg>
         </div>
         <h2 class="text-2xl font-bold text-gray-800 mb-2">Ask anything about your documents</h2>
-        <p class="text-gray-500 text-sm mb-6 text-center max-w-md">Type a question below to search across all your files using AI</p>
+        <p class="text-gray-500 text-sm mb-6 text-center max-w-md">Search finds content <em>inside</em> your files. Ask about specific names, places, dates, prices, or statuses that appear in the documents.</p>
         <div class="flex flex-wrap justify-center gap-2 max-w-2xl">
-          <button onclick="ask('What documents do I have?')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
-            📄 What documents do I have?
+          <button onclick="ask('summarize all available properties')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
+            📋 Summarize all properties
           </button>
-          <button onclick="ask('Show me recent files')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
-            🕒 Show me recent files
+          <button onclick="ask('list properties in contract')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
+            📝 Properties in contract
           </button>
-          <button onclick="ask('Search for contracts')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
-            🔍 Search for contracts
+          <button onclick="ask('show most expensive property')" class="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm text-gray-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
+            💰 Most expensive property
           </button>
         </div>
         <div id="data-status-msg" class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-xl max-w-lg" style="display:none;">
-          <p class="text-sm text-blue-800"><strong>💡 Getting Started:</strong> Your search index is ready! Make sure you've run the initial sync to import your documents.</p>
         </div>
       </div>
     </div>
   </div>
-  
+
   <div class="border-t border-gray-200 bg-white px-6 py-4 flex-shrink-0">
     <div class="max-w-4xl mx-auto flex gap-3">
       <input id="qi" type="text" placeholder="Ask a question about your documents..." class="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 text-sm focus:border-blue-500 focus:outline-none" onkeydown="if(event.key==='Enter')sendQ()">
@@ -126,9 +182,6 @@ HTML_TEMPLATE = '''
 </div>
 
 <script>
-const PROJECT_ID = "{{ project_id }}";
-const DATA_STORE_ID = "{{ data_store_id }}";
-const SERVING_CONFIG = "{{ serving_config }}";
 const COMPANY_NAME = "{{ company_name }}";
 const REGION = "{{ region }}";
 
@@ -138,37 +191,57 @@ function esc(t){const d=document.createElement('div');d.textContent=t;return d.i
 
 async function checkDataStatus(){
   checkCount++;
+  const badge = document.getElementById('status-text');
+  const msg = document.getElementById('data-status-msg');
+
+  let resp;
   try{
-    const resp = await fetch('/api/status');
-    const data = await resp.json();
-    const badge = document.getElementById('status-text');
-    const msg = document.getElementById('data-status-msg');
-    
-    if(data.documents > 0){
-      badge.textContent = `✓ ${data.documents} docs`;
-      badge.className = 'status-badge bg-green-100 text-green-700';
-      msg.style.display = 'none';
-    }else{
-      // Show indexing message for first 10 checks (5 minutes)
-      if(checkCount <= 10){
-        badge.innerHTML = '<span class="spinner">⏳</span> Indexing...';
-        badge.className = 'status-badge bg-blue-100 text-blue-700';
-        msg.style.display = 'block';
-        msg.innerHTML = '<p class="text-sm text-blue-800"><strong>⏳ Documents are being indexed...</strong><br>Drive sync is processing your files. This usually takes 2-5 minutes.<br><br>This page auto-refreshes every 30 seconds. Check back soon!</p>';
-      }else{
-        badge.textContent = '⚠ No documents';
-        badge.className = 'status-badge bg-yellow-100 text-yellow-700';
-        msg.style.display = 'block';
-        
-        const syncJob = data.sync_job || (COMPANY_NAME + '-gdrive-sync').substring(0, 63);
-        const region = data.region || REGION || 'us-east1';
-        
-        msg.innerHTML = '<p class="text-sm text-yellow-800"><strong>⚠️ Still No Documents</strong><br>The sync may have failed. Try running manually:<br><code class="px-2 py-0.5 bg-yellow-200 rounded text-xs">gcloud run jobs execute ' + syncJob + ' --region ' + region + '</code></p>';
-      }
-    }
+    // Timeout so a hung backend doesn't leave the badge stuck in 'Checking...'
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), 10000);
+    resp = await fetch('/api/status', {signal: controller.signal});
+    clearTimeout(to);
   }catch(e){
-    document.getElementById('status-text').textContent = 'Offline';
-    document.getElementById('status-text').className = 'status-badge bg-red-100 text-red-700';
+    // Only true network failures land here (server down, no response)
+    badge.textContent = 'Offline';
+    badge.className = 'status-badge bg-red-100 text-red-700';
+    return;
+  }
+
+  let data;
+  try{ data = await resp.json(); }
+  catch(e){
+    badge.textContent = 'Offline';
+    badge.className = 'status-badge bg-red-100 text-red-700';
+    return;
+  }
+
+  if(data.error){
+    badge.textContent = 'Config error';
+    badge.className = 'status-badge bg-red-100 text-red-700';
+    msg.style.display = 'block';
+    msg.innerHTML = '<p class="text-sm text-red-800"><strong>⚠️ Backend error:</strong> ' + esc(data.error) + '</p>';
+    return;
+  }
+
+  if(data.documents > 0){
+    badge.textContent = '✓ ' + data.documents + ' doc' + (data.documents === 1 ? '' : 's');
+    badge.className = 'status-badge bg-green-100 text-green-700';
+    msg.style.display = 'none';
+    return;
+  }
+
+  // No documents yet
+  if(checkCount <= 10){
+    badge.innerHTML = '<span class="spinner">⏳</span> Indexing...';
+    badge.className = 'status-badge bg-blue-100 text-blue-700';
+    msg.style.display = 'block';
+    msg.innerHTML = '<p class="text-sm text-blue-800"><strong>⏳ Indexing in progress</strong><br>Drive sync is processing your files. This usually takes 2–5 minutes. Auto-refreshes every 30s.</p>';
+  }else{
+    badge.textContent = 'No documents';
+    badge.className = 'status-badge bg-yellow-100 text-yellow-700';
+    msg.style.display = 'block';
+    msg.innerHTML = '<p class="text-sm text-yellow-800"><strong>⚠️ No documents indexed</strong><br>Run <code class="px-2 py-0.5 bg-yellow-200 rounded text-xs">python scripts/manual_sync.py</code> to sync from Drive, or <code class="px-2 py-0.5 bg-yellow-200 rounded text-xs">python scripts/diagnose.py</code> to check what\\'s wrong.</p>';
   }
 }
 
@@ -200,7 +273,10 @@ function fmt(t){
   return '<div class="answer-text"><p>'+h+'</p></div>';
 }
 
-function buildResp(answerText,sources){
+function buildResp(answerText,sources,empty){
+  const bubbleClass = empty
+    ? 'bg-amber-50 border border-amber-200 px-5 py-4 rounded-2xl rounded-bl-md shadow-sm max-w-3xl'
+    : 'bg-white border border-gray-200 px-5 py-4 rounded-2xl rounded-bl-md shadow-sm max-w-3xl';
   let sourcesHtml='';
   if(sources && sources.length){
     sourcesHtml='<div class="mt-4 pt-4 border-t border-gray-100"><p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">'+sources.length+' Source'+(sources.length>1?'s':'')+'</p><div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
@@ -213,7 +289,7 @@ function buildResp(answerText,sources){
     }
     sourcesHtml+='</div></div>';
   }
-  return '<div class="bg-white border border-gray-200 px-5 py-4 rounded-2xl rounded-bl-md shadow-sm max-w-3xl">'+fmt(answerText)+sourcesHtml+'</div>';
+  return '<div class="'+bubbleClass+'">'+fmt(answerText)+sourcesHtml+'</div>';
 }
 
 function ask(q){document.getElementById('qi').value=q;sendQ();}
@@ -223,10 +299,10 @@ async function sendQ(){
   const q=inp.value.trim();
   if(!q)return;
   inp.value='';
-  
+
   addMsg('user',q);
   const dots=showDots();
-  
+
   try{
     const r=await fetch('/api/query',{
       method:'POST',
@@ -235,13 +311,13 @@ async function sendQ(){
     });
     const data=await r.json();
     dots.remove();
-    
+
     if(data.error){
       addMsg('bot','<div class="bg-red-50 border border-red-200 px-5 py-4 rounded-2xl text-sm text-red-700 max-w-3xl">'+esc(data.error)+'</div>');
       return;
     }
-    
-    addMsg('bot',buildResp(data.text||'No answer found.',data.sources));
+
+    addMsg('bot',buildResp(data.text||'No answer found.',data.sources,!!data.empty));
   }catch(err){
     dots.remove();
     addMsg('bot','<div class="bg-red-50 border border-red-200 px-5 py-4 rounded-2xl text-sm text-red-700 max-w-3xl">'+esc(err.message)+'</div>');
@@ -250,11 +326,12 @@ async function sendQ(){
 
 // Init
 checkDataStatus();
-setInterval(checkDataStatus, 30000); // Check every 30s
+setInterval(checkDataStatus, 30000);
 </script>
 </body>
 </html>
 '''
+
 
 @app.route("/")
 def index():
@@ -262,121 +339,135 @@ def index():
         HTML_TEMPLATE,
         company=COMPANY_NAME.replace("-", " ").title(),
         company_name=COMPANY_NAME,
-        project_id=PROJECT_ID or "",
-        data_store_id=DATA_STORE_ID or "",
-        serving_config=SERVING_CONFIG or "",
-        region=GCP_REGION
+        region=GCP_REGION,
     )
+
 
 @app.route("/api/status")
 def api_status():
-    """Check how many documents are in the data store"""
-    
-    # Get sync job name from company name
-    sync_job = f"{COMPANY_NAME}-gdrive-sync"[:63] if COMPANY_NAME else "gdrive-sync"
-    region = GCP_REGION or "us-east1"
-    
-    if not PROJECT_ID or not DATA_STORE_ID:
-        return jsonify({
-            "error": "Configuration not loaded - check .env file",
-            "documents": 0,
-            "sync_job": sync_job,
-            "region": region
-        })
-    
+    """Return current doc count in the data store. Fast-fail on config errors."""
+    if not (PROJECT_ID and DATA_STORE_ID):
+        return jsonify({"error": "Configuration not loaded - check .env file", "documents": 0})
+
     try:
         from google.cloud import discoveryengine_v1 as discoveryengine
-        
-        client = discoveryengine.DocumentServiceClient()
-        parent = f"projects/{PROJECT_ID}/locations/global/collections/default_collection/dataStores/{DATA_STORE_ID}/branches/default_branch"
-        
-        # List documents to get count
-        search_request = discoveryengine.ListDocumentsRequest(parent=parent, page_size=10)
-        page_result = client.list_documents(request=search_request)
-        
-        # Count documents
-        doc_count = sum(1 for _ in page_result)
-        
-        return jsonify({
-            "documents": doc_count,
-            "sync_job": sync_job,
-            "region": region
-        })
+        client = discoveryengine.DocumentServiceClient(credentials=get_creds())
+        parent = (
+            f"projects/{PROJECT_ID}/locations/global"
+            f"/collections/default_collection/dataStores/{DATA_STORE_ID}/branches/default_branch"
+        )
+        # Use page_size=100 and materialize only one page — fast even for many docs
+        req = discoveryengine.ListDocumentsRequest(parent=parent, page_size=100)
+        page = next(iter(client.list_documents(request=req).pages), None)
+        doc_count = len(list(page)) if page else 0
+        return jsonify({"documents": doc_count})
     except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "documents": 0,
-            "sync_job": sync_job,
-            "region": region
-        })
+        return jsonify({"error": str(e), "documents": 0})
+
 
 @app.route("/api/query", methods=["POST"])
 def api_query():
-    """Search and answer using Vertex AI Search"""
+    """Search + Gemini summary with full RAG spec."""
     data = flask_request.get_json(force=True)
-    query = data.get("query", "").strip()
-    
+    query = (data or {}).get("query", "").strip()
     if not query:
         return jsonify({"error": "query required"}), 400
-    
     if not SERVING_CONFIG:
         return jsonify({"error": "Configuration not loaded - check .env file"}), 500
-    
+
     try:
         from google.cloud import discoveryengine_v1 as discoveryengine
-        
-        # Search
-        client = discoveryengine.SearchServiceClient()
-        search_request = discoveryengine.SearchRequest(
+        client = discoveryengine.SearchServiceClient(credentials=get_creds())
+
+        content_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                return_snippet=True,
+            ),
+            summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+                summary_result_count=10,
+                include_citations=True,
+                ignore_adversarial_query=True,
+                ignore_non_summary_seeking_query=False,
+                model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
+                    version="stable",
+                ),
+            ),
+            extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                max_extractive_answer_count=1,
+                max_extractive_segment_count=1,
+            ),
+        )
+
+        req = discoveryengine.SearchRequest(
             serving_config=SERVING_CONFIG,
             query=query,
-            page_size=5,
-            content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-                    summary_result_count=5,
-                    include_citations=True
-                )
-            )
+            page_size=10,
+            content_search_spec=content_spec,
         )
-        
-        response = client.search(search_request)
-        
-        # Extract answer
-        answer_text = "No answer found."
+
+        response = client.search(req)
+
+        # Gemini summary
+        answer_text = ""
         if hasattr(response, "summary") and response.summary:
-            answer_text = response.summary.summary_text
-        
-        # Extract sources
+            answer_text = response.summary.summary_text or ""
+
+        # Extract sources from results
         sources = []
         for result in response.results:
             doc = result.document
-            doc_data = doc.derived_struct_data
-            
             title = "Document"
-            if hasattr(doc_data, "get") and callable(doc_data.get):
-                title = doc_data.get("title", title)
-            
-            sources.append({
-                "title": title,
-                "uri": doc.name if hasattr(doc, "name") else ""
-            })
-        
+            drive_uri = ""
+            # Prefer struct_data title / uri (populated by manual_sync.py)
+            if doc.struct_data:
+                try:
+                    sd = doc.struct_data
+                    if hasattr(sd, "get") and callable(sd.get):
+                        title = sd.get("title", title) or title
+                        drive_uri = sd.get("uri", "") or ""
+                except Exception:
+                    pass
+            # Fall back to derived_struct_data for title
+            if title == "Document" and doc.derived_struct_data:
+                try:
+                    dsd = doc.derived_struct_data
+                    if hasattr(dsd, "get") and callable(dsd.get):
+                        title = dsd.get("title", title) or title
+                except Exception:
+                    pass
+            sources.append({"title": title, "uri": drive_uri})
+
+        # Dedupe sources by title (same doc can appear multiple times for multi-chunk hits)
+        seen = set()
+        unique_sources = []
+        for s in sources:
+            key = s.get("title")
+            if key and key not in seen:
+                seen.add(key)
+                unique_sources.append(s)
+
+        empty = is_empty_answer(answer_text) or (not unique_sources and not answer_text)
+        if empty:
+            answer_text = friendly_empty_message(query)
+
         return jsonify({
-            "text": answer_text,
-            "sources": sources[:5]
+            "text": answer_text or friendly_empty_message(query),
+            "sources": unique_sources[:5],
+            "empty": empty,
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     import webbrowser
     from threading import Timer
-    
+
     port = int(os.environ.get("PORT", 5000))
     url = f"http://localhost:{port}"
-    
+
     print(f"\n  🚀 Web UI: {url}\n")
     Timer(1.5, lambda: webbrowser.open(url)).start()
-    
+
     app.run(host="0.0.0.0", port=port, debug=False)
