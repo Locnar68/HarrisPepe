@@ -1,0 +1,130 @@
+# =============================================================================
+# Example Phase 3 config — what the installer writes to config/config.yaml
+# after a successful interview. Use this as a reference; it is NOT used by
+# the installer. (The real config is generated; committing secrets is a
+# violation of the .gitignore rules.)
+# =============================================================================
+
+schema_version: "3.0"
+
+business:
+  legal_name: "Madison Ave Construction LLC"
+  display_name: "madison-ave-construction"
+  domain: "madisonaveconstruction.com"
+  industry: "construction"
+  country: "US"
+
+contact:
+  full_name: "Michael Pepe"
+  email: "admin@madisonaveconstruction.com"
+  phone: "+16315550100"
+  role: "Owner"
+
+gcp:
+  project_id: "commanding-way-380716"
+  project_number: "437374262890"
+  project_exists: true
+  organization_id: null
+  folder_id: null
+  billing_account_id: "01ABCD-234EFG-567HIJ"
+  region: "us-central1"
+  location: "global"
+
+service_account:
+  short_name: "madison-ave-construction-rag-sa"
+  display_name: "madison-ave-construction RAG pipeline"
+  email: "madison-ave-construction-rag-sa@commanding-way-380716.iam.gserviceaccount.com"
+  key_path: "D:\\LAB\\vertex-ai-search\\Phase3_Bootstrap\\secrets\\service-account.json"
+  roles:
+    - "roles/storage.admin"
+    - "roles/discoveryengine.admin"
+    - "roles/secretmanager.secretAccessor"
+    - "roles/aiplatform.user"
+    - "roles/run.invoker"
+    - "roles/cloudscheduler.admin"
+    - "roles/logging.logWriter"
+
+storage:
+  raw_bucket: "madison-ave-construction-rag-raw"
+  processed_bucket: "madison-ave-construction-rag-processed"
+  archive_bucket: "madison-ave-construction-rag-archive"
+  storage_class: "STANDARD"
+  lifecycle_days_to_archive: 90
+
+vertex:
+  data_store_id: "madison-ave-construction-ds-v1"
+  engine_id: "madison-ave-construction-engine-v1"
+  collection: "default_collection"
+  tier: "ENTERPRISE"
+  content_config: "CONTENT_REQUIRED"
+  industry_vertical: "GENERIC"
+  language_code: "en"
+  enable_layout_parser: true
+  layout_parser_types:
+    - "application/pdf"
+    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    - "text/html"
+  enable_advanced_site_search: false
+
+connectors:
+  - name: "gmail"
+    enabled: true
+    schedule_cron: "0 */6 * * *"
+    options:
+      client_id: "EXAMPLE-012345.apps.googleusercontent.com"
+      user_email: "info@madisonaveconstruction.com"
+      label: "INBOX"
+      query: "newer_than:90d"
+      workspace_domain: false
+    # NOTE: actual secret_refs include a "_ref" path to Secret Manager.
+    # Plaintext client_secret is scrubbed after upload to Secret Manager.
+    secret_refs:
+      client_secret_name: "gmail-oauth-client-secret"
+      refresh_token_name: "gmail-refresh-token"
+      gmail-oauth-client-secret_ref: "projects/437374262890/secrets/gmail-oauth-client-secret/versions/latest"
+      gmail-refresh-token_ref: "projects/437374262890/secrets/gmail-refresh-token/versions/latest"
+
+  - name: "gdrive"
+    enabled: true
+    schedule_cron: "0 */3 * * *"
+    options:
+      mode: "service_account"
+      drive_type: "specific_folders"
+      folder_ids:
+        - "1aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567"
+        - "2bCdEfGhIjKlMnOpQrStUvWxYz2345678"
+      mime_allowlist:
+        - "application/pdf"
+        - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        - "application/vnd.google-apps.document"
+        - "application/msword"
+        - "text/plain"
+        - "text/html"
+        - "image/png"
+        - "image/jpeg"
+    secret_refs: {}
+
+  - name: "onedrive"
+    enabled: false
+    schedule_cron: "0 */6 * * *"
+    options: {}
+    secret_refs: {}
+
+  - name: "sql"
+    enabled: false
+    schedule_cron: "0 */6 * * *"
+    options: {}
+    secret_refs: {}
+
+  - name: "fileshare"
+    enabled: false
+    schedule_cron: "0 */6 * * *"
+    options: {}
+    secret_refs: {}
+
+paths:
+  install_path: "D:\\LAB\\vertex-ai-search\\Phase3_Bootstrap"
+  config_dir: "config"
+  secrets_dir: "secrets"
+  state_dir: "state"
+  logs_dir: "logs"

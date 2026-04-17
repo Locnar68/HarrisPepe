@@ -1,0 +1,62 @@
+# ============================================================================
+# Phase 3 Bootstrap — .gitignore
+# NEVER commit anything generated at install time. Everything below is produced
+# fresh per-machine and contains secrets or local paths.
+# ============================================================================
+
+# ---- Generated install artifacts ----
+config/config.yaml
+config/*.local.yaml
+secrets/
+state/
+logs/
+.env
+*.local.env
+
+# ---- Service account keys ----
+*service-account*.json
+*service_account*.json
+*-sa-*.json
+*.key.json
+credentials.json
+client_secret*.json
+token.json
+refresh_token.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Node (for OAuth helper, if used) ----
+node_modules/
+npm-debug.log*
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Editors ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- Claude Code / AI tool artifacts ----
+.claude/
+.aider*
