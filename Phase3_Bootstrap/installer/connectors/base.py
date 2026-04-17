@@ -17,6 +17,9 @@ to swap in the real image once CI is set up.
 from __future__ import annotations
 
 import logging
+import tempfile
+import yaml
+from pathlib import Path
 
 from installer.config.schema import ConnectorConfig, Phase3Config
 from installer.utils import shell, ui
@@ -36,10 +39,7 @@ def deploy_cloud_run_job(
     dry_run: bool,
 ) -> None:
     """Create (or update) a Cloud Run job for this connector."""
-    # Build comma-separated env vars for single --set-env-vars flag
-    env_pairs = [f"{k}={v}" for k, v in env_vars.items()]
-    env_flag = ",".join(env_pairs) if env_pairs else ""
-
+    
     # Idempotent: describe first; update if exists, create otherwise.
     exists_res = shell.run(
         ["gcloud", "run", "jobs", "describe", job_name,
@@ -49,31 +49,48 @@ def deploy_cloud_run_job(
     )
     action = "update" if (not dry_run and exists_res.ok) else "create"
 
-    args = ["gcloud", "run", "jobs", action, job_name,
-            f"--image={PLACEHOLDER_IMAGE}",
-            f"--region={cfg.gcp.region}",
-            f"--project={cfg.gcp.project_id}",
-            f"--service-account={cfg.service_account.email}",
-            "--max-retries=3",
-            "--task-timeout=3600"]
-    
-    # Add env vars as single comma-separated flag
-    if env_flag:
-        args.append(f"--set-env-vars={env_flag}")
+    # Write env vars to temporary YAML file to avoid escaping issues
+    # MIME types contain slashes which break inline --set-env-vars
+    env_file = None
+    try:
+        if env_vars and not dry_run:
+            env_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+            yaml.dump(env_vars, env_file, default_flow_style=False)
+            env_file.close()
+        
+        args = ["gcloud", "run", "jobs", action, job_name,
+                f"--image={PLACEHOLDER_IMAGE}",
+                f"--region={cfg.gcp.region}",
+                f"--project={cfg.gcp.project_id}",
+                f"--service-account={cfg.service_account.email}",
+                "--max-retries=3",
+                "--task-timeout=3600"]
+        
+        # Use env vars file instead of inline to avoid escaping issues
+        if env_file:
+            args.append(f"--env-vars-file={env_file.name}")
 
-    res = shell.run(args, check=False, timeout=180, dry_run=dry_run)
-    if dry_run:
-        ui.note(f"[dry-run] would {action} Cloud Run job '{job_name}'")
-        return
-    if not res.ok:
-        ui.warn(f"{action} Cloud Run job '{job_name}' failed: "
-                f"{res.stderr.strip()[:200]}")
-        return
-    ui.success(f"Cloud Run job {action}d: {job_name}")
-    ui.note(f"Image is the placeholder '{PLACEHOLDER_IMAGE}'. "
-            f"Replace with your real image once CI is ready:")
-    ui.note(f"  gcloud run jobs update {job_name} --image=<your-image> "
-            f"--region={cfg.gcp.region} --project={cfg.gcp.project_id}")
+        res = shell.run(args, check=False, timeout=180, dry_run=dry_run)
+        
+        if dry_run:
+            ui.note(f"[dry-run] would {action} Cloud Run job '{job_name}'")
+            return
+            
+        if not res.ok:
+            ui.warn(f"{action} Cloud Run job '{job_name}' failed: "
+                    f"{res.stderr.strip()[:200]}")
+            log.error(f"Full error: {res.stderr}")
+            return
+            
+        ui.success(f"Cloud Run job {action}d: {job_name}")
+        ui.note(f"Image is the placeholder '{PLACEHOLDER_IMAGE}'. "
+                f"Replace with your real image once CI is ready:")
+        ui.note(f"  gcloud run jobs update {job_name} --image=<your-image> "
+                f"--region={cfg.gcp.region} --project={cfg.gcp.project_id}")
+    finally:
+        # Clean up temp file
+        if env_file and Path(env_file.name).exists():
+            Path(env_file.name).unlink()
 
 
 def deploy_scheduler(
@@ -99,22 +116,31 @@ def deploy_scheduler(
     )
     action = "update" if (not dry_run and describe.ok) else "create"
 
-    args = ["gcloud", "scheduler", "jobs", f"{action}", "http", scheduler_name,
-            f"--location={cfg.gcp.region}",
-            f"--project={cfg.gcp.project_id}",
-            f"--schedule={conn.schedule_cron}",
-            f"--uri={uri}",
-            "--http-method=POST",
-            f"--oauth-service-account-email={cfg.service_account.email}",
-            "--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform"]
+    # Note: we can't update the --uri or --schedule on an existing scheduler
+    # job. gcloud scheduler update doesn't let you change these. So if the
+    # operator changes cron or region we must delete and re-create.
+    if action == "update":
+        # For now just skip update — we only create once.
+        ui.note(f"Scheduler job '{scheduler_name}' already exists — skipping.")
+        return
 
-    res = shell.run(args, check=False, timeout=120, dry_run=dry_run)
+    args = [
+        "gcloud", "scheduler", "jobs", action, "http", scheduler_name,
+        f"--location={cfg.gcp.region}",
+        f"--project={cfg.gcp.project_id}",
+        f"--schedule={conn.schedule_cron}",
+        f"--uri={uri}",
+        "--http-method=POST",
+        f"--oauth-service-account-email={cfg.service_account.email}",
+        "--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform",
+    ]
+
+    res = shell.run(args, check=False, timeout=180, dry_run=dry_run)
     if dry_run:
-        ui.note(f"[dry-run] would {action} scheduler '{scheduler_name}' "
-                f"with cron '{conn.schedule_cron}'")
+        ui.note(f"[dry-run] would {action} scheduler '{scheduler_name}'")
         return
     if not res.ok:
-        ui.warn(f"scheduler {action} '{scheduler_name}' failed: "
+        ui.warn(f"{action} scheduler '{scheduler_name}' failed: "
                 f"{res.stderr.strip()[:200]}")
         return
-    ui.success(f"Scheduler {action}d: {scheduler_name} ({conn.schedule_cron})")
+    ui.success(f"Scheduler job {action}d: {scheduler_name}")
