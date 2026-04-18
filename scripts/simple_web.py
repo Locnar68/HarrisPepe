@@ -2,7 +2,7 @@
 
 Env file discovery (first match wins):
   1. $VERTEX_ENV_FILE (explicit override)
-  2. <cwd>/Phase3_Bootstrap/secrets/.env         (typical DELETE4/DELETE5 workspace)
+  2. <cwd>/Phase3_Bootstrap/secrets/.env         (typical workspace)
   3. <cwd>/.env                                   (user-provided at cwd root)
   4. <repo>/Phase3_Bootstrap/secrets/.env         (repo-local, for dev setups)
 """
@@ -49,7 +49,7 @@ else:
     print(f"    {Path.cwd() / '.env'}")
     print(f"    {Path(__file__).resolve().parent.parent / 'Phase3_Bootstrap' / 'secrets' / '.env'}")
     print("")
-    print("Fix: either cd into your workspace (e.g. D:\\LAB\\DELETE4) before running,")
+    print("Fix: either cd into your workspace before running,")
     print("     or set VERTEX_ENV_FILE to the full path of your .env.")
     SA_KEY_PATH = Path(__file__).resolve().parent.parent / "Phase3_Bootstrap" / "secrets" / "service-account.json"
 
@@ -92,6 +92,27 @@ def get_creds():
                 scopes=["https://www.googleapis.com/auth/cloud-platform"]
             )
     return _CREDS
+
+
+# ---- Safe struct-data accessor --------------------------------------------
+def _safe_struct_get(struct, key: str, default: str = "") -> str:
+    """Read a key from a proto-plus Struct (or dict) defensively.
+
+    Handles the various shapes google-cloud-discoveryengine returns across
+    versions: MapComposite, dict, proto Struct, None.
+    """
+    if struct is None:
+        return default
+    try:
+        if hasattr(struct, "get") and callable(struct.get):
+            val = struct.get(key, default)
+        else:
+            val = struct[key] if key in struct else default
+        if val is None:
+            return default
+        return str(val)
+    except Exception:
+        return default
 
 
 # ---- Response phrasing helpers ---------------------------------------------
@@ -363,7 +384,8 @@ def api_status():
     if not BOOTSTRAP_ENV:
         return jsonify({
             "error": "No .env file found",
-            "hint": "cd into your workspace (e.g. D:\\LAB\\DELETE4) before running, or set VERTEX_ENV_FILE to the full path.",
+            "hint": "cd into your workspace before running, "
+                    "or set VERTEX_ENV_FILE to the full path.",
             "documents": 0,
         })
     if not (PROJECT_ID and DATA_STORE_ID):
@@ -381,9 +403,11 @@ def api_status():
             f"/collections/default_collection/dataStores/{DATA_STORE_ID}/branches/default_branch"
         )
         req = discoveryengine.ListDocumentsRequest(parent=parent, page_size=100)
-        page = next(iter(client.list_documents(request=req).pages), None)
-        doc_count = len(list(page)) if page else 0
-        return jsonify({"documents": doc_count})
+        # The pager itself is the flat iterator over Documents across all
+        # pages. Don't try to drill through `.pages` — in current SDK versions
+        # the per-page ListDocumentsResponse is NOT directly iterable.
+        docs = list(client.list_documents(request=req))
+        return jsonify({"documents": len(docs)})
     except Exception as e:
         return jsonify({"error": str(e), "documents": 0})
 
@@ -428,31 +452,23 @@ def api_query():
         )
 
         response = client.search(req)
+        # IMPORTANT: materialize the pager BEFORE accessing response.summary.
+        # In the discoveryengine SDK, summary is lazily populated as a side
+        # effect of consuming the first page; reading it directly off the
+        # pager yields an empty message.
+        results = list(response)
 
         answer_text = ""
         if hasattr(response, "summary") and response.summary:
             answer_text = response.summary.summary_text or ""
 
         sources = []
-        for result in response.results:
+        for result in results:
             doc = result.document
-            title = "Document"
-            drive_uri = ""
-            if doc.struct_data:
-                try:
-                    sd = doc.struct_data
-                    if hasattr(sd, "get") and callable(sd.get):
-                        title = sd.get("title", title) or title
-                        drive_uri = sd.get("uri", "") or ""
-                except Exception:
-                    pass
-            if title == "Document" and doc.derived_struct_data:
-                try:
-                    dsd = doc.derived_struct_data
-                    if hasattr(dsd, "get") and callable(dsd.get):
-                        title = dsd.get("title", title) or title
-                except Exception:
-                    pass
+            title = _safe_struct_get(doc.struct_data, "title", "Document")
+            drive_uri = _safe_struct_get(doc.struct_data, "uri", "")
+            if title == "Document":
+                title = _safe_struct_get(doc.derived_struct_data, "title", "Document")
             sources.append({"title": title, "uri": drive_uri})
 
         seen = set()
