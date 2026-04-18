@@ -29,6 +29,9 @@ google-auth-oauthlib>=1.1,<2.0
 requests>=2.31,<3.0
 httpx>=0.25,<1.0
 
+# ---- Web UI (scripts/simple_web.py, auto-launched at end of bootstrap) ----
+flask>=3.0,<4.0
+
 # ---- Dev / test ----
 pytest>=7.4,<9.0
 pytest-mock>=3.12,<4.0
