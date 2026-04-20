@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""
-Phase5_OneDrive/bootstrap_onedrive.py
---------------------------------------
-One-time setup and credential verification for the OneDrive to GCS sync pipeline.
-
-Run this FIRST before onedrive_sync.py.  It will:
-  0. Interview you for any missing config values and write secrets/.env
-  1. Verify all required env vars are present
-  2. Trigger MSAL device-code sign-in (browser) and cache the token
-  3. Confirm Microsoft Graph can reach your OneDrive folder
-  4. Confirm the GCS bucket exists and is writable
-
-SCALE-TODO (switch before production / multi-client use)
-Current auth: MSAL delegated device-code flow with token cache.
-This is fine for a single-operator pilot but WILL go stale
-(refresh tokens expire after 90 days of inactivity by default,
-and sooner if Azure AD policy enforces rotation).
-
-Switch to: Azure App Registration + client_credentials grant
-  - No user interaction, no token expiry headaches
-  - Requires: Azure AD tenant admin to grant Files.Read as an
-    application permission (not delegated) and grant admin consent
-  - In onedrive_sync.py: swap ConfidentialClientApplication
-    and acquire_token_for_client() for the current device-code flow
-  - Add AZURE_CLIENT_SECRET to secrets/.env
-"""
-
-import os
-import sys
-import json
-import requests
-import msal
+import os, sys, json, requests, msal
 from pathlib import Path
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
@@ -38,17 +7,14 @@ from google.api_core.exceptions import NotFound
 ENV_PATH         = Path(__file__).parent / "secrets" / ".env"
 TOKEN_CACHE_PATH = Path(__file__).parent / "secrets" / "token_cache.json"
 GRAPH_API        = "https://graph.microsoft.com/v1.0"
-SCOPES           = ["Files.Read", "offline_access"]
+SCOPES           = ["Files.Read"]
 
-# ---------------------------------------------------------------------------
-# Env loading
-# ---------------------------------------------------------------------------
 def _load_env():
     from dotenv import load_dotenv
     candidates = [
         os.environ.get("VERTEX_ENV_FILE"),
         ENV_PATH,
-        Path.cwd() / "Phase5_OneDrive" / "secrets" / ".env",
+        Path.cwd() / "Phase5_oneDrive" / "secrets" / ".env",
         Path.cwd() / ".env",
     ]
     for c in candidates:
@@ -56,57 +22,17 @@ def _load_env():
             load_dotenv(c)
             return
 
-# ---------------------------------------------------------------------------
-# Interview config
-# ---------------------------------------------------------------------------
 REQUIRED_VARS = [
-    (
-        "AZURE_CLIENT_ID",
-        "Azure App Client ID",
-        "portal.azure.com > App registrations > your app > Overview",
-        "",
-    ),
-    (
-        "AZURE_TENANT_ID",
-        "Azure Tenant ID",
-        "portal.azure.com > App registrations > your app > Overview",
-        "",
-    ),
-    (
-        "ONEDRIVE_FOLDER_PATH",
-        "OneDrive Folder Path",
-        "The folder path inside your OneDrive, e.g:  Documents/Doorloop\n"
-        "     (This is the folder path shown in the OneDrive URL after /Documents/)",
-        "",
-    ),
-    (
-        "GCP_PROJECT_ID",
-        "GCP Project ID",
-        "e.g. island-advantage-realty-rag-35",
-        "",
-    ),
-    (
-        "GCS_BUCKET_NAME",
-        "GCS Bucket Name (no gs:// prefix)",
-        "The bucket that will mirror OneDrive files",
-        "",
-    ),
-    (
-        "VERTEX_LOCATION",
-        "Vertex AI Search location",
-        "Almost always: global",
-        "global",
-    ),
-    (
-        "VERTEX_DATASTORE_ID",
-        "Vertex AI Search Datastore ID",
-        "e.g. island-advantage-realty-ds-v1",
-        "",
-    ),
+    ("AZURE_CLIENT_ID",    "Azure App Client ID",          "portal.azure.com > App registrations > your app > Overview", ""),
+    ("AZURE_TENANT_ID",    "Azure Tenant ID",              "portal.azure.com > App registrations > your app > Overview", ""),
+    ("ONEDRIVE_FOLDER_PATH","OneDrive Folder Path",        "e.g. Documents/Doorloop", ""),
+    ("GCP_PROJECT_ID",     "GCP Project ID",               "e.g. island-advantage-realty-rag-35", ""),
+    ("GCS_BUCKET_NAME",    "GCS Bucket Name (no gs://)",   "The bucket that will mirror OneDrive files", ""),
+    ("VERTEX_LOCATION",    "Vertex AI Search location",    "Almost always: global", "global"),
+    ("VERTEX_DATASTORE_ID","Vertex AI Search Datastore ID","e.g. island-advantage-realty-ds-v1", ""),
 ]
 
-
-def _read_existing_env() -> dict:
+def _read_existing_env():
     values = {}
     if ENV_PATH.exists():
         for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
@@ -116,8 +42,7 @@ def _read_existing_env() -> dict:
                 values[k.strip()] = v.strip()
     return values
 
-
-def _write_env(values: dict):
+def _write_env(values):
     ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# Phase5_OneDrive/secrets/.env",
@@ -141,32 +66,24 @@ def _write_env(values: dict):
     ]
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-
-def run_interview() -> dict:
+def run_interview():
     existing = _read_existing_env()
     for k, *_ in REQUIRED_VARS:
         if k not in existing and os.environ.get(k):
             existing[k] = os.environ[k]
-
-    missing = [
-        row for row in REQUIRED_VARS
-        if not existing.get(row[0])
-    ]
-
+    missing = [row for row in REQUIRED_VARS if not existing.get(row[0])]
     if not missing:
         print("[setup] All config values already present in secrets/.env")
         return existing
-
     print("\n" + "=" * 60)
     print("  Phase 5 Setup Interview")
     print("  Missing values detected -- please enter them now.")
     print("  They will be saved to secrets/.env automatically.")
     print("=" * 60)
-
     for key, label, hint, default in missing:
         print(f"\n  {label}")
         print(f"  Hint: {hint}")
-        prompt = f"  Value [{default}]: " if default else f"  Value: "
+        prompt = f"  Value [{default}]: " if default else "  Value: "
         while True:
             val = input(prompt).strip()
             if not val and default:
@@ -175,18 +92,12 @@ def run_interview() -> dict:
                 existing[key] = val
                 break
             print("  Value is required.")
-
     _write_env(existing)
     print(f"\n  Config saved to {ENV_PATH}")
-
     from dotenv import load_dotenv
     load_dotenv(ENV_PATH, override=True)
-
     return existing
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 def _check(label, condition, detail=""):
     marker = "  OK  " if condition else "  --  "
     print(f"{marker}{label}")
@@ -194,25 +105,21 @@ def _check(label, condition, detail=""):
         print(f"        -> {detail}")
     return condition
 
-
-def _get_token(client_id: str, tenant_id: str) -> str:
+def _get_token(client_id, tenant_id):
     cache = msal.SerializableTokenCache()
     if TOKEN_CACHE_PATH.exists():
         cache.deserialize(TOKEN_CACHE_PATH.read_text())
-
     app = msal.PublicClientApplication(
         client_id,
         authority=f"https://login.microsoftonline.com/{tenant_id}",
         token_cache=cache,
     )
-
     accounts = app.get_accounts()
     result = None
     if accounts:
         result = app.acquire_token_silent(SCOPES, account=accounts[0])
         if result:
             print("  (using cached token)")
-
     if not result:
         flow = app.initiate_device_flow(scopes=SCOPES)
         if "user_code" not in flow:
@@ -226,39 +133,26 @@ def _get_token(client_id: str, tenant_id: str) -> str:
         print("  4. Return here -- this window continues automatically")
         print("=" * 60 + "\n")
         result = app.acquire_token_by_device_flow(flow)
-
     if "access_token" not in result:
-        raise RuntimeError(
-            f"Auth failed: {result.get('error_description', result)}\n"
-            "SCALE-TODO: if running scheduled, token may have expired. "
-            "See SCALE-TODO in onedrive_sync.py."
-        )
-
+        raise RuntimeError(f"Auth failed: {result.get('error_description', result)}")
     TOKEN_CACHE_PATH.parent.mkdir(exist_ok=True)
     TOKEN_CACHE_PATH.write_text(cache.serialize())
     return result["access_token"]
 
-# ---------------------------------------------------------------------------
-# Check functions
-# ---------------------------------------------------------------------------
-def check_env_vars(cfg: dict) -> bool:
+def check_env_vars(cfg):
     print("\n[1/4] Environment variables")
     ok = True
     for key, label, _, _ in REQUIRED_VARS:
         val = cfg.get(key, "")
-        ok = _check(f"{key}", bool(val), "Missing -- re-run bootstrap to enter") and ok
+        ok = _check(key, bool(val), "Missing -- re-run bootstrap to enter") and ok
     return ok
 
-
-def check_msal_auth(cfg: dict):
+def check_msal_auth(cfg):
     print("\n[2/4] Microsoft Graph auth")
     try:
         token = _get_token(cfg["AZURE_CLIENT_ID"], cfg["AZURE_TENANT_ID"])
         _check("Access token acquired", bool(token))
-        r = requests.get(
-            f"{GRAPH_API}/me",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        r = requests.get(f"{GRAPH_API}/me", headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
         me = r.json()
         name = me.get("userPrincipalName", me.get("displayName", "unknown"))
@@ -268,24 +162,19 @@ def check_msal_auth(cfg: dict):
         _check("MSAL auth", False, str(e))
         return None
 
-
-def check_onedrive_folder(token: str, folder_path: str) -> bool:
+def check_onedrive_folder(token, folder_path):
     print("\n[3/4] OneDrive folder access")
     if not token:
         _check("Skipped -- no token", False)
         return False
     try:
-        # Use path-based Graph API endpoint — no folder ID needed
         url = f"{GRAPH_API}/me/drive/root:/{folder_path}:/children"
         r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
         items   = r.json().get("value", [])
-        files   = [i for i in items if "file"   in i]
+        files   = [i for i in items if "file" in i]
         folders = [i for i in items if "folder" in i]
-        _check(
-            f"Folder readable: {len(files)} file(s), {len(folders)} subfolder(s)",
-            True,
-        )
+        _check(f"Folder readable: {len(files)} file(s), {len(folders)} subfolder(s)", True)
         if files:
             print("\n       Files found (first 10):")
             for f in files[:10]:
@@ -296,11 +185,9 @@ def check_onedrive_folder(token: str, folder_path: str) -> bool:
         _check("OneDrive folder", False, str(e))
         if "404" in str(e):
             print(f"       Hint: folder path '{folder_path}' not found.")
-            print("       Check ONEDRIVE_FOLDER_PATH in secrets/.env")
         return False
 
-
-def check_gcs_bucket(project_id: str, bucket_name: str) -> bool:
+def check_gcs_bucket(project_id, bucket_name):
     print("\n[4/4] GCS bucket access")
     try:
         client = storage.Client(project=project_id)
@@ -313,49 +200,33 @@ def check_gcs_bucket(project_id: str, bucket_name: str) -> bool:
         _check("Write + delete probe passed", True)
         return True
     except NotFound:
-        _check(
-            f"Bucket gs://{bucket_name}",
-            False,
-            "Not found -- check GCS_BUCKET_NAME or create the bucket first",
-        )
+        _check(f"Bucket gs://{bucket_name}", False, "Not found -- check GCS_BUCKET_NAME")
         return False
     except Exception as e:
         _check("GCS bucket", False, str(e))
         return False
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def main():
     print("=" * 60)
     print("  Phase 5  OneDrive -> GCS -> Vertex  Bootstrap")
     print("=" * 60)
-
     _load_env()
     cfg = run_interview()
-
-    # Shell env wins over file values
     for key, *_ in REQUIRED_VARS:
         if os.environ.get(key):
             cfg[key] = os.environ[key]
-
     env_ok = check_env_vars(cfg)
     token  = check_msal_auth(cfg) if env_ok else None
     od_ok  = check_onedrive_folder(token, cfg.get("ONEDRIVE_FOLDER_PATH", "")) if token else False
     gcs_ok = check_gcs_bucket(cfg.get("GCP_PROJECT_ID", ""), cfg.get("GCS_BUCKET_NAME", ""))
-
     print("\n" + "=" * 60)
     if env_ok and token and od_ok and gcs_ok:
         print("  All checks passed.")
-        print("  Next steps:")
-        print("    python onedrive_sync.py --dry-run")
-        print("    python onedrive_sync.py")
-        print("    python schedule_setup.py --install --interval 30")
+        print("  Next: python onedrive_sync.py --dry-run")
     else:
         print("  One or more checks failed -- see details above.")
-        print("  Fix the issue and re-run bootstrap_onedrive.py")
+        print("  Fix and re-run bootstrap_onedrive.py")
     print("=" * 60 + "\n")
-
 
 if __name__ == "__main__":
     main()
