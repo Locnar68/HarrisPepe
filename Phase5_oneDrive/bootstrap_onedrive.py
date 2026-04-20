@@ -168,7 +168,17 @@ def check_onedrive_folder(token, folder_path):
         _check("Skipped -- no token", False)
         return False
     try:
-        url = f"{GRAPH_API}/me/drive/root:/{folder_path}:/children"
+        # Get explicit drive ID — required for OneDrive for Business / SharePoint
+        drive_resp = requests.get(
+            f"{GRAPH_API}/me/drive",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        drive_resp.raise_for_status()
+        drive_id = drive_resp.json()["id"]
+        _check(f"Drive found: {drive_id[:20]}...", True)
+
+        # Access folder by path using explicit drive ID
+        url = f"{GRAPH_API}/drives/{drive_id}/root:/{folder_path}:/children"
         r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
         items   = r.json().get("value", [])
@@ -185,6 +195,7 @@ def check_onedrive_folder(token, folder_path):
         _check("OneDrive folder", False, str(e))
         if "404" in str(e):
             print(f"       Hint: folder path '{folder_path}' not found.")
+            print("       Check ONEDRIVE_FOLDER_PATH in secrets/.env")
         return False
 
 def check_gcs_bucket(project_id, bucket_name):
