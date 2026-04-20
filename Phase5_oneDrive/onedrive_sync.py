@@ -154,8 +154,13 @@ def download_file(token, item):
     if not download_url:
         download_url = f"{GRAPH_API}/me/drive/items/{item['id']}/content"
     r = requests.get(download_url, headers={"Authorization": f"Bearer {token}"}, stream=True)
+    # If 401, silently refresh token and retry once
+    if r.status_code == 401:
+        log.warning("Token expired mid-sync -- refreshing token and retrying")
+        token = _get_ms_token()
+        r = requests.get(download_url, headers={"Authorization": f"Bearer {token}"}, stream=True)
     r.raise_for_status()
-    return r.content
+    return r.content, token
 
 def upload_to_gcs(data, filename, item, dry_run):
     # Preserve OneDrive path structure using parentReference
@@ -209,7 +214,7 @@ def run_sync(dry_run=False, force=False):
         log.info(f"Syncing: {name}  ({size_kb} KB)")
         try:
             if not dry_run:
-                data = download_file(ms_token, item)
+                data, ms_token = download_file(ms_token, item)
                 upload_to_gcs(data, name, item, dry_run=False)
             else:
                 upload_to_gcs(b"", name, item, dry_run=True)
