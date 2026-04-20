@@ -56,6 +56,15 @@ else:
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
+# Phase 4 — load only when PHASE4_ENABLED=true in .env
+if os.getenv('PHASE4_ENABLED', '').lower() == 'true':
+    try:
+        from phase4_routes import phase4_bp
+        app.register_blueprint(phase4_bp)
+        print('[Phase4] Blueprint registered — /bob is live')
+    except ImportError as _e:
+        print(f'[Phase4] Skipped: {_e}')
+
 COMPANY_NAME = os.getenv("COMPANY_NAME", "Document Search")
 PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 DATA_STORE_ID = os.getenv("VERTEX_DATA_STORE_ID")
@@ -501,6 +510,9 @@ if __name__ == "__main__":
     url = f"http://localhost:{port}"
 
     print(f"\n  🚀 Web UI: {url}\n")
-    Timer(1.5, lambda: webbrowser.open(url)).start()
+    _launch = '/bob' if os.getenv('PHASE4_ENABLED', '').lower() == 'true' else '/'
+    Timer(1.5, lambda: webbrowser.open(url + _launch)).start()
+    if _launch == '/bob':
+        print('  Opening Job Intelligence dashboard...')
 
     app.run(host="0.0.0.0", port=port, debug=False)

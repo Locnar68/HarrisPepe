@@ -6,6 +6,40 @@
 
 ---
 
+## Deployment Paths
+
+| | Generic Company | Madison Ave Construction |
+|---|---|---|
+| **Use case** | Any small business needing document search | Restoration & renovation job intelligence |
+| **Phase** | Phase 3 | Phase 4 |
+| **Bootstrap** | `cd Phase3_Bootstrap && .\bootstrap.ps1` | Same bootstrap, then add Phase 4 env vars |
+| **UI launched** | `http://localhost:5000` | `http://localhost:5000/bob` |
+| **Search mode** | Vertex AI summary | Vertex retrieval + Gemini synthesis |
+| **Conversation memory** | None | Multi-turn, job-context aware |
+| **Document download** | View link only | Download button per source |
+| **Quick questions** | Generic | Permits, loans, appraisals, owners, lenders |
+| **Extra env vars** | None | `PHASE4_ENABLED=true`, `GEMINI_API_KEY`, `GDRIVE_FOLDER_IDS` |
+| **Extra deps** | See requirements.txt | `google-generativeai`, `google-api-python-client`, `pdfplumber` |
+
+### Phase 4 Setup (Madison Ave Construction only)
+
+After running the standard bootstrap, add these to your `.env` file:
+
+```bash
+PHASE4_ENABLED=true
+GEMINI_API_KEY=your-gemini-api-key-from-aistudio.google.com
+GDRIVE_FOLDER_IDS=your-drive-folder-id
+```
+
+Then restart:
+```powershell
+cd scripts
+python simple_web.py
+# Browser opens automatically at http://localhost:5000/bob
+```
+
+---
+
 ## 🚀 Quick Start (10 Minutes)
 
 ### Prerequisites
