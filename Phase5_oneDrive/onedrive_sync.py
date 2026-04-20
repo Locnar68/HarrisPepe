@@ -122,8 +122,16 @@ def list_onedrive_files(token, force):
         url = f"{GRAPH_API}/drives/{drive_id}/root:/{ONEDRIVE_FOLDER_PATH}:/delta"
 
     while url:
-        r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-        r.raise_for_status()
+        # Retry loop with backoff for Graph API rate limiting (429)
+        for attempt in range(5):
+            r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 429:
+                wait = int(r.headers.get("Retry-After", 20)) + 2
+                log.warning(f"Rate limited by Graph API -- waiting {wait}s (attempt {attempt+1}/5)")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            break
         data = r.json()
         for item in data.get("value", []):
             if "deleted" in item:
@@ -149,8 +157,10 @@ def download_file(token, item):
     r.raise_for_status()
     return r.content
 
-def upload_to_gcs(data, filename, dry_run):
-    gcs_path = f"onedrive-mirror/{filename}"
+def upload_to_gcs(data, filename, item, dry_run):
+    # Preserve OneDrive path structure using parentReference
+    parent_path = item.get("parentReference", {}).get("path", "").split("root:")[-1].strip("/")
+    gcs_path = f"onedrive-mirror/{parent_path}/{filename}" if parent_path else f"onedrive-mirror/{filename}"
     uri = f"gs://{GCS_BUCKET_NAME}/{gcs_path}"
     if dry_run:
         log.info(f"  [dry-run] Would upload -> {uri}")
@@ -200,9 +210,9 @@ def run_sync(dry_run=False, force=False):
         try:
             if not dry_run:
                 data = download_file(ms_token, item)
-                upload_to_gcs(data, name, dry_run=False)
+                upload_to_gcs(data, name, item, dry_run=False)
             else:
-                upload_to_gcs(b"", name, dry_run=True)
+                upload_to_gcs(b"", name, item, dry_run=True)
             uploaded += 1
         except Exception as e:
             log.error(f"  Failed: {name} -- {e}")
