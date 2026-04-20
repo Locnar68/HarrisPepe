@@ -35,3 +35,8 @@ Thumbs.db
 HARRIS_DEPLOYMENT/
 vertex-ai-search-starter/
 *.old
+
+# Phase 5 OneDrive secrets
+Phase5_oneDrive/Secrets/.env
+Phase5_oneDrive/Secrets/token_cache.json
+Phase5_oneDrive/Secrets/delta_state.json
