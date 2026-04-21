@@ -180,7 +180,7 @@ def trigger_vertex_import(dry_run):
     if not VERTEX_DATASTORE or not GCP_PROJECT_ID:
         log.warning("VERTEX_DATASTORE_ID or GCP_PROJECT_ID not set -- skipping Vertex import")
         return
-    gcs_uri = f"gs://{GCS_BUCKET_NAME}/onedrive-mirror/"
+    gcs_uri = f"gs://{GCS_BUCKET_NAME}/onedrive-mirror/**"
     url = (
         f"https://discoveryengine.googleapis.com/v1alpha/projects/{GCP_PROJECT_ID}"
         f"/locations/{VERTEX_LOCATION}/collections/default_collection"
