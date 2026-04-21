@@ -1,0 +1,97 @@
+# Central configuration — every module reads this file.
+
+project:
+  id: commanding-way-380716
+  location: global
+
+company:
+  name: "Madison Ave Construction"
+  phone: "(631) 388-0455"
+  email: michael.pepe@gmail.com
+  address: "Deer Park, NY | Suffolk County"
+  website: www.madisonaveconstruction.com
+  tagline: "24/7 Emergency Restoration Services"
+  logo: assets/RFKWa.jpg
+
+# Admin dashboard — password-protected cost/usage tracking.
+admin:
+  password: "0714"
+
+gcs:
+  bucket: commanding-way-380716-madison-mirror
+  mirror_prefix: data
+  manifest_prefix: _manifests
+
+service_account:
+  email: madison-sync-sa@commanding-way-380716.iam.gserviceaccount.com
+  key_path: service-account.json
+
+data_store:
+  id: madison-ave-docs
+  display_name: Madison Ave Construction Docs
+  industry_vertical: GENERIC
+  solution_types: [SOLUTION_TYPE_CHAT, SOLUTION_TYPE_SEARCH]
+  content_config: CONTENT_REQUIRED
+
+engine:
+  id: madison-ave-search-app
+  display_name: Madison Ave Intelligent Search
+  search_tier: SEARCH_TIER_ENTERPRISE
+  search_add_ons: [SEARCH_ADD_ON_LLM]
+
+email:
+  sender: michael.pepe@gmail.com
+  app_password: PASTE_APP_PASSWORD_HERE
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+
+metadata:
+  category_folders:
+    "01-Acquisition": legal
+    "02-Financials":  finance
+    "04-Permits":     permit
+    "06-Invoices":    billing
+    "07-Photos":      image
+    "09-Email":       email
+  properties:
+    - 15-Northridge
+  heuristic_classification: true
+  default_property: 15-Northridge
+  heuristic_rules:
+    - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$", doc_type: image }
+    - { pattern: "^inv[_\\s-]|invoice|receipt",          doc_type: billing }
+    - { pattern: "permit|webpermit|b_review|inspect",    doc_type: permit }
+    - { pattern: "p&l|statement|appraisal|bank",         doc_type: finance }
+    - { pattern: "closing|entity|ein|sale|sow|deed|title|llc", doc_type: legal }
+    - { pattern: ".",                                    doc_type: document }
+
+cloud_run:
+  service_name: madison-sync
+  region: us-central1
+  memory: 1Gi
+  cpu: 2
+  timeout: 1800
+  max_instances: 1
+  poll_interval_minutes: 60
+  scheduler_job_name: madison-sync-cron
+
+connectors:
+  drive:
+    enabled: true
+    root_folder_id: 17oev3CKYBXn4wOuK2K0DxXe5z1v7C0kz
+    mirror_as: Properties
+    export_workspace_as: pdf
+  gmail:
+    enabled: false
+    client_secret_path: client_secret.json
+    query: "has:attachment"
+    after: "2024/01/01"
+    default_property: 15-Northridge
+    index_body: true
+    index_attachments: true
+  onedrive:
+    enabled: false
+  local_files:
+    enabled: false
+  csv:
+    enabled: false
