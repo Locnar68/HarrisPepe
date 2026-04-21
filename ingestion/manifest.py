@@ -43,7 +43,7 @@ def build_manifest(cfg: Config, log=print) -> list[Record]:
 
         # Store the GCS URI in structData so it survives the API round-trip.
         # Search results return structData but not always content.uri.
-        struct = {**tags, "updated": mtime, "source_uri": uri}
+        struct = {**tags, "updated": mtime, "source_uri": uri, "title": tags.get("filename", Path(blob.name).name)}
 
         records.append(Record(
             id=doc_id,
@@ -78,3 +78,5 @@ def upload_manifest(cfg: Config, records: list[Record], log=print) -> str:
     uri = cfg.gcs_manifest_uri()
     log(f"  uploaded manifest: {uri}")
     return uri
+
+
