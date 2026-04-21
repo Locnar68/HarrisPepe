@@ -55,6 +55,9 @@ else:
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+from phase4_routes import phase4_bp
+app.register_blueprint(phase4_bp)
+
 
 # Phase 4 — load only when PHASE4_ENABLED=true in .env
 if os.getenv('PHASE4_ENABLED', '').lower() == 'true':
@@ -443,13 +446,6 @@ def api_query():
                 include_citations=True,
                 ignore_adversarial_query=True,
                 ignore_non_summary_seeking_query=False,
-                model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
-                    version="stable",
-                ),
-            ),
-            extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-                max_extractive_answer_count=1,
-                max_extractive_segment_count=1,
             ),
         )
 
@@ -499,6 +495,7 @@ def api_query():
         })
 
     except Exception as e:
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -516,3 +513,5 @@ if __name__ == "__main__":
         print('  Opening Job Intelligence dashboard...')
 
     app.run(host="0.0.0.0", port=port, debug=False)
+
+
