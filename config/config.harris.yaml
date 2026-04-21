@@ -1,64 +1,63 @@
 project:
-  id: island-advantage-realty-rag-35
+  id: project-e4696db1-f020-4aa1-ab0
   location: global
 
 company:
-  name: "Island Advantage Realty"
-  phone: ""
-  email: ""
-  address: ""
-  website: ""
-  tagline: ""
+  name: "Madison Ave Construction"
+  phone: "(631) 388-0455"
+  email: madisonavenueconstruction@gmail.com
+  address: "Deer Park, NY | Suffolk County"
+  website: www.madisonaveconstruction.com
+  tagline: "24/7 Emergency Restoration Services"
+
+admin:
+  password: "0714"
 
 gcs:
-  bucket: island-advantage-realty-rag-raw-621629992886
-  mirror_prefix: data
-  manifest_prefix: _manifests
+  bucket: madison-ave-onedrive-mirror
+  mirror_prefix: onedrive-mirror
+  manifest_prefix: manifests
 
 service_account:
-  email: island-advantage-realty-rag-sa@island-advantage-realty-rag-35.iam.gserviceaccount.com
-  key_path: Phase3_Bootstrap/secrets/service-account.json
+  email: ""
+  key_path: ""
 
 data_store:
-  id: island-advantage-realty-ds-v1
-  display_name: Island Advantage Realty Docs
+  id: madison-ave-onedrive-ds_1776720944393_gcs_store
+  display_name: Madison Ave OneDrive Docs
   industry_vertical: GENERIC
   solution_types: [SOLUTION_TYPE_CHAT, SOLUTION_TYPE_SEARCH]
   content_config: CONTENT_REQUIRED
 
 engine:
-  id: island-advantage-realty-engine-v1
-  display_name: Island Advantage Intelligent Search
-  search_tier: SEARCH_TIER_ENTERPRISE
+  id: madison-ave-onedrive-ds_1776720944393_gcs_store
+  display_name: Madison Ave OneDrive Search
+  search_tier: SEARCH_TIER_STANDARD
   search_add_ons: [SEARCH_ADD_ON_LLM]
 
 metadata:
-  heuristic_classification: true
-  default_property: island-advantage
+  properties_folder: Doorloop
   category_folders:
-    "01-Listings":   listing
-    "02-Financials": finance
-    "03-Legal":      legal
-    "04-Photos":     image
-    "05-Email":      email
+    "files":  document
+    "photos": image
+  heuristic_classification: true
+  default_property: unknown
   heuristic_rules:
-    - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$", doc_type: image }
-    - { pattern: "invoice|receipt",                        doc_type: billing }
-    - { pattern: "listing|mls|property",                   doc_type: listing }
-    - { pattern: "p&l|statement|appraisal|financials",     doc_type: finance }
-    - { pattern: "closing|deed|title|llc|entity|ein",      doc_type: legal }
-    - { pattern: ".",                                      doc_type: document }
+    - { pattern: "\\.(jpg|jpeg|png|gif|bmp|tiff|webp)$",        doc_type: image }
+    - { pattern: "invoice|inv[_\\s-]|receipt|payment",           doc_type: billing }
+    - { pattern: "permit|inspection|certificate|occupancy",       doc_type: permit }
+    - { pattern: "closing|deed|title|llc|entity|sale|flip",      doc_type: legal }
+    - { pattern: "p&l|statement|appraisal|bank|financial|loan",  doc_type: finance }
+    - { pattern: "lease|tenant|rent|renewal|agreement",          doc_type: lease }
+    - { pattern: ".",                                            doc_type: document }
 
 connectors:
   drive:
-    enabled: true
-    root_folder_id: 1cRyt4KOfqdYc1pZEn0T_Mmfv_IzUVyKp
-    mirror_as: Properties
-    export_workspace_as: pdf
+    enabled: false
   gmail:
     enabled: false
   onedrive:
-    enabled: false
+    enabled: true
   local_files:
     enabled: false
   csv:

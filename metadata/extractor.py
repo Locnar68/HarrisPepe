@@ -24,7 +24,8 @@ def classify_strict(cfg: Config, gcs_path: str) -> dict | None:
     parts = p.parts
     if len(parts) < 5:
         return None
-    if parts[0] != cfg.mirror_prefix or parts[1] != "Properties":
+    props_folder = (cfg.raw.get("metadata") or {}).get("properties_folder", "Properties")
+    if parts[0] != cfg.mirror_prefix or parts[1] != props_folder:
         return None
 
     property_folder = parts[2]
@@ -91,3 +92,4 @@ def classify(cfg: Config, gcs_path: str) -> dict | None:
     if tags is not None:
         return tags
     return classify_heuristic(cfg, gcs_path)
+
