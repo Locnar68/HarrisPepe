@@ -40,3 +40,20 @@ vertex-ai-search-starter/
 Phase5_oneDrive/Secrets/.env
 Phase5_oneDrive/Secrets/token_cache.json
 Phase5_oneDrive/Secrets/delta_state.json
+
+# --- Madison Ave / deploy_test secrets ---
+deploy_test/secrets/.env
+deploy_test/secrets/service-account.json
+deploy_test/secrets/*.empty-placeholder
+.env.madison-ave
+
+# --- Session scratch ---
+scripts/*.bak
+scripts/fix_bob.py
+scripts/build_phase4.py
+scripts/commit_phase4.py
+cleanup.ps1
+commit-fixes.ps1
+patch/
+patch2/
+patch3/
