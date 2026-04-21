@@ -176,22 +176,107 @@ def upload_to_gcs(data, filename, item, dry_run):
     log.info(f"  Uploaded -> {uri}")
     return uri
 
+# Searchable document types for Vertex AI Search
+_SEARCHABLE_EXTS = ('.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.pptx')
+_MIME_MAP = {
+    '.pdf':  'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc':  'application/msword',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls':  'application/vnd.ms-excel',
+    '.csv':  'text/csv',
+    '.txt':  'text/plain',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
+
+def _make_doc_id(blob_name: str) -> str:
+    """Sanitize a GCS blob path into a valid Vertex document ID.
+    Vertex requires: [a-zA-Z0-9-_]* only.
+    """
+    import re
+    clean = re.sub(r'[^a-zA-Z0-9_]', '_', blob_name)
+    clean = re.sub(r'_+', '_', clean).strip('_')
+    return clean[:128]
+
+
+def _build_and_upload_manifest(dry_run: bool) -> str | None:
+    """Scan GCS bucket for searchable documents, build a JSONL manifest,
+    upload it, and return the GCS URI of the manifest.
+    Skips images and other non-indexable file types.
+    """
+    if dry_run:
+        log.info("  [dry-run] Would build and upload Vertex import manifest")
+        return None
+
+    import google.auth
+    creds, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    gcs_client = storage.Client(project=GCP_PROJECT_ID, credentials=creds)
+    bucket = gcs_client.bucket(GCS_BUCKET_NAME)
+
+    lines = []
+    seen_ids: set[str] = set()
+    count = 0
+
+    for blob in bucket.list_blobs(prefix="onedrive-mirror/"):
+        name_lower = blob.name.lower()
+        ext = next((e for e in _SEARCHABLE_EXTS if name_lower.endswith(e)), None)
+        if not ext:
+            continue
+        uri = f"gs://{GCS_BUCKET_NAME}/{blob.name}"
+        doc_id = _make_doc_id(blob.name)
+        if doc_id in seen_ids:
+            doc_id = f"{doc_id[:120]}_{len(seen_ids)}"
+        seen_ids.add(doc_id)
+        lines.append(json.dumps({
+            "id": doc_id,
+            "jsonData": json.dumps({
+                "title": blob.name.split("/")[-1],
+                "source_uri": uri,
+            }),
+            "content": {
+                "mimeType": _MIME_MAP.get(ext, "application/pdf"),
+                "uri": uri,
+            },
+        }))
+        count += 1
+
+    manifest_path = "manifests/import_manifest_latest.jsonl"
+    bucket.blob(manifest_path).upload_from_string("\n".join(lines))
+    manifest_uri = f"gs://{GCS_BUCKET_NAME}/{manifest_path}"
+    log.info(f"Manifest built: {count} searchable documents -> {manifest_uri}")
+    return manifest_uri
+
+
 def trigger_vertex_import(dry_run):
     if not VERTEX_DATASTORE or not GCP_PROJECT_ID:
         log.warning("VERTEX_DATASTORE_ID or GCP_PROJECT_ID not set -- skipping Vertex import")
         return
-    gcs_uri = f"gs://{GCS_BUCKET_NAME}/onedrive-mirror/**"
+
+    manifest_uri = _build_and_upload_manifest(dry_run)
+    if dry_run:
+        return
+
     url = (
         f"https://discoveryengine.googleapis.com/v1alpha/projects/{GCP_PROJECT_ID}"
         f"/locations/{VERTEX_LOCATION}/collections/default_collection"
         f"/dataStores/{VERTEX_DATASTORE}/branches/0/documents:import"
     )
-    body = {"gcsSource": {"inputUris": [gcs_uri], "dataSchema": "document"}, "reconciliationMode": "INCREMENTAL"}
-    if dry_run:
-        log.info(f"  [dry-run] Would POST Vertex import: {gcs_uri}")
-        return
+    body = {
+        "gcsSource": {
+            "inputUris": [manifest_uri],
+            "dataSchema": "document",
+        },
+        "reconciliationMode": "FULL",
+    }
     token = _get_gcp_token()
-    headers = {"Authorization": f"Bearer {token}", "X-Goog-User-Project": GCP_PROJECT_ID, "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Goog-User-Project": GCP_PROJECT_ID,
+        "Content-Type": "application/json",
+    }
     r = requests.post(url, headers=headers, json=body)
     if r.status_code == 200:
         log.info(f"Vertex import triggered. Operation: {r.json().get('name', '')}")
