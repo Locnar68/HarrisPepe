@@ -1,8 +1,264 @@
-# Vertex AI Search - Phase 3 Bootstrap
+# HarrisPepe — AI Document Search Platform
 
-**Zero-configuration RAG system for small businesses.** Automated setup, deployment, and sync for Google Drive + Gmail powered by Vertex AI Search Enterprise + Gemini.
+**Zero-configuration RAG system for small businesses.** Automated setup, deployment, and sync for Google Drive, OneDrive, and Gmail powered by Vertex AI Search + Gemini.
 
-**Current release: Phase 3** — Turnkey bootstrap framework with auto-deployment, Cloud Run sync jobs, and integrated web UI.
+**Current release: Phase 5** — OneDrive connector live. Full pipeline: OneDrive → GCS → Vertex AI Search → Web UI.
+
+---
+
+## Phase Overview
+
+| Phase | Status | What it does |
+|-------|--------|--------------|
+| **Phase 3** | ✅ Complete | Core bootstrap — GCP setup, Vertex AI Search, GCS, web UI, Google Drive sync |
+| **Phase 4** | 🔧 In progress | Gemini conversational front-end, job intelligence (Madison Ave) |
+| **Phase 5** | ✅ Complete | OneDrive → GCS → Vertex sync with scheduled polling |
+
+---
+
+## Deployment Paths
+
+| | Generic Company | Madison Ave Construction |
+|---|---|---|
+| **Use case** | Any small business needing document search | Restoration & renovation job intelligence |
+| **Source** | Google Drive | OneDrive (Doorloop folder) |
+| **Bootstrap** | `cd Phase3_Bootstrap && .\bootstrap.ps1` | `cd Phase5_oneDrive && python bootstrap_onedrive.py` |
+| **UI launched** | `http://localhost:5000` | `http://localhost:5000` |
+| **Sync schedule** | Cloud Scheduler (daily) | Windows Task Scheduler (every 30 min) |
+| **Extra env vars** | None | Azure Client ID/Tenant ID, OneDrive folder path |
+
+---
+
+## 🚀 Quick Start — Phase 3 (Google Drive)
+
+### Prerequisites
+
+- **Git**: https://git-scm.com/downloads
+- **Python 3.10+**: https://www.python.org/downloads/
+- **gcloud CLI**: https://cloud.google.com/sdk/docs/install
+- **GCP billing account**: https://console.cloud.google.com/billing
+
+### One-Command Deploy
+
+```powershell
+git clone https://github.com/Locnar68/HarrisPepe.git
+cd HarrisPepe
+pip install -r requirements.txt
+cd Phase3_Bootstrap
+.\bootstrap.ps1
+```
+
+The bootstrap interviews you for company name, Drive folder ID, and sync schedule, then automatically creates all GCP resources and launches the web UI at `http://localhost:5000`.
+
+---
+
+## 🚀 Quick Start — Phase 5 (OneDrive)
+
+### Prerequisites
+
+- Python 3.10+
+- gcloud CLI authenticated: `gcloud auth application-default login`
+- Azure App Registration (see setup below)
+
+### Deploy
+
+```powershell
+git clone https://github.com/Locnar68/HarrisPepe.git
+cd HarrisPepe
+cd Phase5_oneDrive
+pip install -r requirements.txt
+python bootstrap_onedrive.py
+```
+
+The bootstrap **interviews you** for all required values and saves them to `secrets/.env` automatically. No manual file editing needed.
+
+### Azure App Registration (one-time, ~10 minutes)
+
+1. Go to [portal.azure.com](https://portal.azure.com) → **App registrations** → **New registration**
+2. Name it (e.g. `harrispecpe-onedrive-sync`), Single tenant, click **Register**
+3. **Authentication** → **Add platform** → **Mobile and desktop** → check `https://login.microsoftonline.com/common/oauth2/nativeclient`
+4. Enable **Allow public client flows** → Yes → Save
+5. **API permissions** → Add → Microsoft Graph → Delegated → `Files.Read` → Add
+6. Copy **Application (client) ID** and **Directory (tenant) ID** — bootstrap will ask for these
+
+### Bootstrap interview values
+
+| Question | Where to find it |
+|----------|------------------|
+| Azure App Client ID | portal.azure.com → App registrations → your app → Overview |
+| Azure Tenant ID | portal.azure.com → App registrations → your app → Overview |
+| OneDrive Folder Path | Open folder in OneDrive web — path after `/Documents/` e.g. `Doorloop` |
+| GCP Project ID | console.cloud.google.com |
+| GCS Bucket Name | The bucket that will mirror OneDrive files |
+| Vertex Location | `global` (default) |
+| Vertex Datastore ID | console.cloud.google.com → AI Applications → Data Stores |
+
+### Sync schedule setup (after bootstrap passes)
+
+```powershell
+# Run as Administrator
+python schedule_setup.py --install --interval 30
+```
+
+This registers a Windows Task Scheduler job that syncs every 30 minutes.
+
+> ⚠️ **SCALE-TODO**: The current auth uses a device-code OAuth token that expires after ~90 days. Before production, switch to Azure App Registration + `client_credentials` grant (no expiry). Instructions are in the `SCALE-TODO` block at the top of `onedrive_sync.py`.
+
+> ⚠️ **Machine dependency**: Windows Task Scheduler only runs when the machine is on. For production, migrate to Cloud Run Jobs on GCP (serverless, no machine needed). This is on the Phase 5 roadmap.
+
+### Run the web UI
+
+```powershell
+cd ..
+python scripts\simple_web.py
+```
+
+Open `http://localhost:5000`
+
+---
+
+## 🏗️ Architecture
+
+### Phase 3 (Google Drive)
+
+```
+Google Drive Folder
+        │  Cloud Run sync job (daily)
+        ▼
+GCS Raw Bucket → Vertex AI Search → Web UI
+```
+
+### Phase 5 (OneDrive)
+
+```
+OneDrive (Doorloop/)
+        │  onedrive_sync.py (every 30 min via Task Scheduler)
+        ▼
+GCS Bucket (onedrive-mirror/)
+        │  JSONL manifest import (searchable docs only)
+        ▼
+Vertex AI Search Datastore
+        │
+        ▼
+Web UI (Flask) → http://localhost:5000
+```
+
+**What gets indexed:** PDF, DOCX, DOC, XLSX, XLS, CSV, TXT, PPTX
+**What gets skipped:** JPG, PNG, and all other image formats (stored in GCS but not indexed)
+
+---
+
+## 📁 Folder Structure
+
+```
+HarrisPepe/
+├── Phase3_Bootstrap/          # Google Drive bootstrap framework
+│   ├── bootstrap.ps1          # Main entry point
+│   ├── installer/             # GCP resource creation
+│   ├── secrets/               # .env + service-account.json (gitignored)
+│   └── scripts/               # sync, diagnose, manual_sync
+│
+├── Phase5_oneDrive/           # OneDrive connector
+│   ├── bootstrap_onedrive.py  # One-time setup + verification interview
+│   ├── onedrive_sync.py       # Manual + scheduled sync
+│   ├── schedule_setup.py      # Windows Task Scheduler registration
+│   ├── requirements.txt       # msal, google-cloud-storage, requests
+│   └── Secrets/               # .env (gitignored), token_cache.json
+│
+├── deploy_test/               # Local deployment test
+│   ├── deploy_local.ps1       # Full test script with flags
+│   └── secrets/.env           # Pre-filled test config (gitignored)
+│
+├── scripts/
+│   └── simple_web.py          # Web UI (works with Phase 3 + Phase 5)
+│
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 💡 Using the Web UI
+
+The web UI works with both Phase 3 (Drive) and Phase 5 (OneDrive) datastores.
+
+```powershell
+# Point at Phase 5 config
+$env:VERTEX_ENV_FILE = "D:\LAB\vertex-ai-search\deploy_test\secrets\.env"
+python scripts\simple_web.py
+```
+
+Or use the deploy_test script:
+```powershell
+cd deploy_test
+.\deploy_local.ps1 -SkipSync    # bootstrap + web UI only
+.\deploy_local.ps1 -DryRun      # dry run sync + web UI
+.\deploy_local.ps1              # full sync + web UI
+```
+
+---
+
+## 💰 GCP Pricing Estimates
+
+| Service | Cost |
+|---------|------|
+| Vertex AI Search queries | ~$2.50 per 1,000 queries |
+| Cloud Storage | ~$0.02/GB/month |
+| Cloud Run Jobs (Phase 3) | Negligible for daily runs |
+| **Light usage (few hundred queries/month)** | **$5–15/month** |
+| **Heavy usage (thousands of queries/month)** | **$25–75/month** |
+
+New GCP accounts get **$300 free credit** which covers several months of testing.
+
+---
+
+## 🔐 Security
+
+**Never committed to git:**
+- `Phase3_Bootstrap/secrets/.env`
+- `Phase3_Bootstrap/secrets/service-account.json`
+- `Phase5_oneDrive/Secrets/.env`
+- `Phase5_oneDrive/Secrets/token_cache.json`
+- `Phase5_oneDrive/Secrets/delta_state.json`
+- `deploy_test/secrets/.env`
+
+---
+
+## 🐛 Troubleshooting
+
+```powershell
+python scripts/diagnose.py
+```
+
+| Symptom | Fix |
+|---------|-----|
+| Uploads fail with 403 | `python scripts/ensure_gcs_buckets.py` |
+| UI says OFFLINE | `python scripts/test_rag.py` |
+| OneDrive 401 errors mid-sync | Run `python bootstrap_onedrive.py` to re-auth |
+| OneDrive 429 rate limit | Script auto-retries with backoff |
+| Vertex import 0 successes | Check manifest format — IDs must match `[a-zA-Z0-9-_]*` |
+| Token expired (90 days) | Re-run `bootstrap_onedrive.py` or switch to client_credentials |
+
+---
+
+## 📚 Phase Roadmap
+
+- **Phase 3** ✅ Google Drive → GCS → Vertex → Web UI
+- **Phase 4** 🔧 Gemini conversational front-end + job intelligence
+- **Phase 5** ✅ OneDrive → GCS → Vertex sync
+- **Phase 5 (next)** 🔲 Migrate sync to Cloud Run Jobs (remove machine dependency)
+- **Phase 5 (next)** 🔲 Switch auth to client_credentials (remove 90-day token expiry)
+- **Phase 5 (next)** 🔲 Consolidate Phase 3 + Phase 5 bootstrap into single interview
+
+---
+
+## 🤝 Contributing
+
+Handover project for Harris. Bootstrap framework is production-ready.
+
+For issues: check troubleshooting above, review `Phase3_Bootstrap/logs/`, or contact the team.
+
+**Built with ❤️ for seamless document search**
 
 ---
 
