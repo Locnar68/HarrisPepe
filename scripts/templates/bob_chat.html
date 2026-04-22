@@ -5,277 +5,1263 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Madison Ave — Job Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0f1114;--surface:#181b20;--surface2:#1f2228;--border:#2c3038;
-  --amber:#f5a623;--amber-dim:rgba(245,166,35,0.12);--amber-glow:rgba(245,166,35,0.05);
-  --green:#4ade80;--green-dim:rgba(74,222,128,0.12);
-  --orange:#fb923c;--red-dim:rgba(248,113,113,0.12);
-  --text:#dde1e7;--muted:#6b7280;--dim:#9aa0a8;
-  --user-bg:#1e3a5f;--user-border:#2d5a8c;
-  --font-head:'Oswald',sans-serif;--font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+/* ── Reset & base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:           #0f1114;
+  --surface:      #181b20;
+  --surface2:     #1f2228;
+  --border:       #2c3038;
+  --border-dim:   #1e2228;
+  --amber:        #f5a623;
+  --amber-dim:    rgba(245, 166, 35, 0.12);
+  --amber-glow:   rgba(245, 166, 35, 0.06);
+  --green:        #4ade80;
+  --green-dim:    rgba(74, 222, 128, 0.12);
+  --orange:       #fb923c;
+  --red-dim:      rgba(248, 113, 113, 0.12);
+  --text:         #dde1e7;
+  --text-muted:   #6b7280;
+  --text-dim:     #9aa0a8;
+  --user-bg:      #1e3a5f;
+  --user-border:  #2d5a8c;
+  --ai-bg:        #1a1e24;
+  --ai-border:    #2c3038;
+  --font-head:    'Oswald', sans-serif;
+  --font-body:    'IBM Plex Sans', sans-serif;
+  --font-mono:    'IBM Plex Mono', monospace;
 }
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;overflow:hidden}
-.app{display:grid;grid-template-rows:56px 1fr;grid-template-columns:240px 1fr;height:100vh}
-/* Header */
-.header{grid-column:1/-1;display:flex;align-items:center;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);gap:12px}
-.logo{width:32px;height:32px;background:var(--amber);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.logo svg{width:18px;height:18px}
-.title{font-family:var(--font-head);font-size:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-.title span{color:var(--amber)}
-.sub{font-size:10px;color:var(--muted);font-family:var(--mono)}
-.hflex{flex:1}
-.ctx-badge{display:none;align-items:center;gap:6px;background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:4px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--amber)}
-.ctx-badge.on{display:flex}
-.ctx-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.btn-new{background:transparent;border:1px solid var(--border);color:var(--dim);font-family:var(--font);font-size:12px;padding:5px 12px;border-radius:4px;cursor:pointer;transition:all .15s}
-.btn-new:hover{border-color:var(--amber);color:var(--amber)}
-/* Sidebar */
-.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.sb-label{padding:14px 16px 6px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
-.qbtn{display:block;width:100%;text-align:left;background:transparent;border:none;border-bottom:1px solid rgba(44,48,56,.6);color:var(--dim);font-family:var(--font);font-size:12.5px;padding:8px 16px;cursor:pointer;transition:all .12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qbtn:hover{background:var(--amber-glow);color:var(--amber);padding-left:20px}
-.qbtn .i{margin-right:6px;opacity:.7}
-.sb-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--border);font-size:11px;font-family:var(--mono);color:var(--muted)}
-.sb-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle}
-/* Chat */
-.chat{display:flex;flex-direction:column;min-height:0}
-.messages{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
-.messages::-webkit-scrollbar{width:4px}
-.messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-/* Welcome */
-.welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--muted);text-align:center}
-.welcome h2{font-family:var(--font-head);font-size:20px;font-weight:500;letter-spacing:.05em;color:var(--dim);text-transform:uppercase}
-.welcome p{font-size:13px;max-width:320px;line-height:1.7}
-.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:6px;max-width:460px}
-.chip{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;color:var(--dim);cursor:pointer;transition:all .15s}
-.chip:hover{border-color:var(--amber);color:var(--amber);background:var(--amber-dim)}
-/* Messages */
-.msg{display:flex;gap:10px;max-width:840px;animation:msgIn .18s ease-out}
-@keyframes msgIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-.msg.user{align-self:flex-end;flex-direction:row-reverse;max-width:70%}
-.av{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-size:11px;font-weight:600;flex-shrink:0;margin-top:2px}
-.msg.user .av{background:var(--user-border);color:#fff}
-.msg.ai .av{background:var(--amber-dim);border:1px solid rgba(245,166,35,.3);color:var(--amber)}
-.mbody{display:flex;flex-direction:column;gap:5px;min-width:0}
-.bubble{padding:10px 14px;border-radius:6px;font-size:13.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
-.msg.user .bubble{background:var(--user-bg);border:1px solid var(--user-border);color:#dce8f5;border-radius:6px 2px 6px 6px}
-.msg.ai  .bubble{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:2px 6px 6px 6px}
-/* Meta row */
-.meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:3px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
-.c-high  {background:var(--green-dim); color:var(--green); border:1px solid rgba(74,222,128,.25)}
-.c-medium{background:var(--amber-dim); color:var(--amber); border:1px solid rgba(245,166,35,.25)}
-.c-low   {background:rgba(251,146,60,.12);color:var(--orange);border:1px solid rgba(251,146,60,.25)}
-.c-none  {background:var(--red-dim);   color:#f87171;      border:1px solid rgba(248,113,113,.25)}
-.src-count{font-family:var(--mono);font-size:10px;color:var(--muted)}
-/* Sources */
-.sources{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
-.src{font-family:var(--mono);font-size:10px;padding:2px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;transition:color .12s,border-color .12s}
-.src:hover{color:var(--amber);border-color:rgba(245,166,35,.3)}
-.src a{color:inherit;text-decoration:none} .src-dl{margin-left:5px;opacity:.5;font-size:9px;cursor:pointer;transition:opacity .15s} .src-dl:hover{opacity:1}
 
-/* Typing */
-.typing{display:flex;gap:4px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:2px 6px 6px 6px;width:fit-content}
-.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:typ 1.2s infinite}
-.typing span:nth-child(2){animation-delay:.2s}
-.typing span:nth-child(3){animation-delay:.4s}
-@keyframes typ{0%,80%,100%{transform:scale(1);opacity:.4}40%{transform:scale(1.3);opacity:1}}
-/* Input */
-.input-bar{padding:12px 24px 16px;background:var(--bg);border-top:1px solid var(--border)}
-.input-row{display:flex;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 8px 7px 14px;transition:border-color .15s}
-.input-row:focus-within{border-color:rgba(245,166,35,.5);box-shadow:0 0 0 3px rgba(245,166,35,.05)}
-#qi{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--font);font-size:14px;resize:none;min-height:22px;max-height:100px;overflow-y:auto;line-height:1.5}
-#qi::placeholder{color:var(--muted)}
-#send{background:var(--amber);border:none;border-radius:5px;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:flex-end;transition:background .15s,transform .1s}
-#send:hover{background:#e09520}
-#send:active{transform:scale(.94)}
-#send:disabled{background:var(--border);cursor:not-allowed}
-#send svg{width:15px;height:15px;fill:#000}
-.hint{font-size:11px;color:var(--muted);margin-top:6px;font-family:var(--mono);text-align:center}
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+/* ── Layout grid ───────────────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-rows: 56px 1fr 0;
+  grid-template-columns: 260px 1fr;
+  height: 100vh;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+.header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 14px;
+  z-index: 10;
+}
+.header-logo {
+  width: 34px; height: 34px;
+  background: var(--amber);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.header-logo svg { width: 20px; height: 20px; }
+.header-title {
+  font-family: var(--font-head);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-transform: uppercase;
+}
+.header-title span { color: var(--amber); }
+.header-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-left: 2px;
+}
+.header-divider {
+  flex: 1;
+}
+.job-context-badge {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: var(--amber-dim);
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--amber);
+}
+.job-context-badge.visible { display: flex; }
+.job-context-badge .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.btn-new-chat {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-new-chat:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+.sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-section {
+  padding: 14px 16px 8px;
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.quick-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quick-btn:hover {
+  background: var(--amber-glow);
+  color: var(--amber);
+  padding-left: 20px;
+}
+.quick-btn .icon {
+  margin-right: 7px;
+  opacity: 0.6;
+}
+.sidebar-spacer { flex: 1; }
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.sidebar-footer .status-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ── Chat area ─────────────────────────────────────────────────────────── */
+.chat-area {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+.messages::-webkit-scrollbar { width: 5px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* ── Empty / welcome state ─────────────────────────────────────────────── */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.welcome-icon {
+  font-size: 36px;
+  margin-bottom: 4px;
+}
+.welcome h2 {
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.welcome p {
+  font-size: 13px;
+  max-width: 340px;
+  line-height: 1.7;
+}
+.welcome-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+  max-width: 480px;
+}
+.example-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.example-chip:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-dim);
+}
+
+/* ── Message bubbles ───────────────────────────────────────────────────── */
+.msg {
+  display: flex;
+  gap: 10px;
+  max-width: 860px;
+  animation: msgIn 0.18s ease-out;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+  max-width: 72%;
+}
+.msg-avatar {
+  width: 30px; height: 30px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.msg.user .msg-avatar {
+  background: var(--user-border);
+  color: #fff;
+}
+.msg.ai .msg-avatar {
+  background: var(--amber-dim);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  color: var(--amber);
+  font-size: 11px;
+}
+.msg-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg.user .msg-bubble {
+  background: var(--user-bg);
+  border: 1px solid var(--user-border);
+  color: #dce8f5;
+  border-radius: 6px 2px 6px 6px;
+}
+.msg.ai .msg-bubble {
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  color: var(--text);
+  border-radius: 2px 6px 6px 6px;
+}
+
+/* Confidence badge */
+.confidence-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.confidence-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.conf-high   { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(74,222,128,.25); }
+.conf-medium { background: var(--amber-dim);  color: var(--amber);  border: 1px solid rgba(245,166,35,.25); }
+.conf-low    { background: rgba(251,146,60,.12); color: var(--orange); border: 1px solid rgba(251,146,60,.25); }
+.conf-none   { background: var(--red-dim);    color: #f87171;       border: 1px solid rgba(248,113,113,.25); }
+
+.search-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Sources */
+.sources-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+.source-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  transition: color 0.12s, border-color 0.12s;
+}
+.source-chip:hover { color: var(--amber); border-color: rgba(245,166,35,.3); }
+
+/* Suggested follow-ups */
+.followups-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.followup-btn {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-family: var(--font-body);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.followup-btn:hover {
+  border-style: solid;
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-glow);
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  border-radius: 2px 6px 6px 6px;
+  width: fit-content;
+}
+.typing-indicator span {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing 1.2s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+  0%, 80%, 100% { transform: scale(1);   opacity: 0.4; }
+  40%           { transform: scale(1.3); opacity: 1; }
+}
+
+/* ── Input bar ─────────────────────────────────────────────────────────── */
+.input-bar {
+  padding: 14px 24px 18px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.input-row {
+  display: flex;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px 8px 16px;
+  transition: border-color 0.15s;
+}
+.input-row:focus-within {
+  border-color: rgba(245, 166, 35, 0.5);
+  box-shadow: 0 0 0 3px rgba(245,166,35,0.06);
+}
+#queryInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  resize: none;
+  min-height: 22px;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.55;
+}
+#queryInput::placeholder { color: var(--text-muted); }
+#sendBtn {
+  background: var(--amber);
+  border: none;
+  border-radius: 5px;
+  width: 36px; height: 36px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+  align-self: flex-end;
+}
+#sendBtn:hover  { background: #e09520; }
+#sendBtn:active { transform: scale(0.94); }
+#sendBtn:disabled { background: var(--border); cursor: not-allowed; }
+#sendBtn svg { width: 16px; height: 16px; fill: #000; }
+.input-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 7px;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* ── Admin button (header) ──────────────────────────────────── */
+.btn-admin {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: all 0.15s;
+  margin-left: 6px;
+}
+.btn-admin:hover { border-color: var(--amber); color: var(--amber); }
+
+/* ── Admin overlay ──────────────────────────────────────────── */
+#admin-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+#admin-overlay.open { display: flex; }
+
+#admin-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 560px;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  animation: adminIn 0.18s ease-out;
+}
+@keyframes adminIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+#admin-modal::-webkit-scrollbar { width: 4px; }
+#admin-modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-header h2 {
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.admin-close {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 20px; cursor: pointer; line-height: 1;
+  padding: 0 2px;
+  transition: color 0.12s;
+}
+.admin-close:hover { color: var(--text); }
+
+/* ── Lock screen ────────────────────────────────────────────── */
+#admin-lock {
+  padding: 36px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+#admin-lock .lock-icon { font-size: 32px; }
+#admin-lock p {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+#admin-pw-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 8px 14px;
+  outline: none;
+  width: 100%;
+  max-width: 280px;
+  text-align: center;
+  letter-spacing: 0.1em;
+  transition: border-color 0.15s;
+}
+#admin-pw-input:focus { border-color: var(--amber); }
+#admin-pw-input.shake {
+  animation: shake 0.35s ease;
+  border-color: #f87171;
+}
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  60%      { transform: translateX(6px); }
+}
+.btn-unlock {
+  background: var(--amber);
+  border: none;
+  border-radius: 5px;
+  color: #000;
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 8px 28px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-unlock:hover { background: #e09520; }
+
+/* ── Admin content ──────────────────────────────────────────── */
+#admin-content { display: none; padding: 20px 22px 24px; }
+#admin-content.visible { display: block; }
+
+.admin-section {
+  margin-bottom: 22px;
+}
+.admin-section-title {
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-dim);
+  margin-bottom: 10px;
+}
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-dim);
+  gap: 12px;
+}
+.admin-row:last-child { border-bottom: none; }
+.admin-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 110px;
+}
+.admin-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.dot-red   { background: #f87171; box-shadow: 0 0 5px rgba(248,113,113,.5); }
+.dot-amber { background: var(--amber); }
+.admin-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border-dim);
+  background: var(--surface2);
+  margin-left: 4px;
+}
+.ab-on  { color: var(--green);    border-color: rgba(74,222,128,.2); }
+.ab-off { color: var(--text-muted); }
+
+.admin-refresh {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.btn-refresh {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-refresh:hover { border-color: var(--amber); color: var(--amber); }
+
+.cost-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  line-height: 1.6;
+  border-top: 1px solid var(--border-dim);
+  padding-top: 10px;
+}
+
 </style>
 </head>
 <body>
 <div class="app">
-<header class="header">
-  <div class="logo">
-    <svg viewBox="0 0 24 24" fill="none"><path d="M3 9L12 3L21 9V20C21 20.55 20.55 21 20 21H15V15H9V21H4C3.45 21 3 20.55 3 20V9Z" fill="#000"/><path d="M12 6L6 9.5V19H9V14H15V19H18V9.5L12 6Z" fill="#f5a623" opacity=".6"/></svg>
-  </div>
-  <div>
-    <div class="title">Madison <span>Ave</span> Construction</div>
-    <div class="sub">JOB INTELLIGENCE v4.0</div>
-  </div>
-  <div class="hflex"></div>
-  <div class="ctx-badge" id="ctxBadge"><span class="ctx-dot"></span><span id="ctxLabel"></span></div>
-  <button class="btn-new" onclick="newChat()">+ New Chat</button>
-</header>
 
-<aside class="sidebar">
-  <div class="sb-label">Quick Questions</div>
-  <button class="qbtn" onclick="sq('Any permits expiring soon?')"><span class="i">🏗️</span>Permits</button>
-  <button class="qbtn" onclick="sq('What loans and draws are on record?')"><span class="i">💰</span>Loans & Draws</button>
-  <button class="qbtn" onclick="sq('Who are the owners of record?')"><span class="i">👤</span>Owners</button>
-  <button class="qbtn" onclick="sq('Summarize the most recent appraisal')"><span class="i">📊</span>Appraisals</button>
-  <button class="qbtn" onclick="sq('What inspections are on file?')"><span class="i">✅</span>Inspections</button>
-  <button class="qbtn" onclick="sq('Who are the lenders on our jobs?')"><span class="i">🏦</span>Lenders</button>
-  <button class="qbtn" onclick="sq('What jobs and properties are indexed?')"><span class="i">🗂️</span>What''s Indexed</button>
-  <button class="qbtn" onclick="sq('Any flood zone properties?')"><span class="i">💧</span>Flood Zones</button>
-  <div class="sb-foot"><span class="sb-dot"></span>Vertex AI · Gemini 1.5 Flash</div>
-</aside>
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 9L12 3L21 9V20C21 20.55 20.55 21 20 21H15V15H9V21H4C3.45 21 3 20.55 3 20V9Z" fill="#000"/>
+        <path d="M12 6L6 9.5V19H9V14H15V19H18V9.5L12 6Z" fill="#f5a623" opacity="0.6"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Madison <span>Ave</span> Construction</div>
+      <div class="header-sub">JOB INTELLIGENCE v4.0</div>
+    </div>
+    <div class="header-divider"></div>
+    <div class="job-context-badge" id="jobContextBadge">
+      <span class="dot"></span>
+      <span id="jobContextLabel">—</span>
+    </div>
+    <button class="btn-new-chat" onclick="newChat()">+ New Chat</button>
+    <button class="btn-admin" onclick="adminOpen()">⚙ Admin</button>
+  </header>
 
-<main class="chat">
-  <div class="messages" id="msgs">
-    <div class="welcome" id="welcome">
-      <div style="font-size:34px">🏗️</div>
-      <h2>Job Intelligence</h2>
-      <p>Ask anything about your jobs, permits, loans, appraisals, or documents.</p>
-      <div class="chips">
-        <span class="chip" onclick="sq('summarize northridge')">Summarize Northridge</span>
-        <span class="chip" onclick="sq('Any permits expiring soon?')">Permit status</span>
-        <span class="chip" onclick="sq('What draws were made on the Northridge loan?')">Loan draws</span>
-        <span class="chip" onclick="sq('Who is the owner at 15 Northridge Dr?')">Owner of record</span>
-        <span class="chip" onclick="sq('What lender is on the Northridge property?')">Lender</span>
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-section">Quick Questions</div>
+
+    <button class="quick-btn" onclick="sendQuick('Which jobs are still open?')">
+      <span class="icon">📋</span>Open Jobs
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Do we have any unpaid invoices or outstanding balances?')">
+      <span class="icon">💰</span>Unpaid Invoices
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Any insurance claims still waiting on adjuster response?')">
+      <span class="icon">📄</span>Pending Claims
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Are there any permits expiring soon?')">
+      <span class="icon">🏗️</span>Permit Status
+    </button>
+    <button class="quick-btn" onclick="sendQuick('What jobs are we currently working on in Brooklyn?')">
+      <span class="icon">📍</span>Brooklyn Jobs
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Give me a summary of the most recent job we completed.')">
+      <span class="icon">✅</span>Last Completed Job
+    </button>
+    <button class="quick-btn" onclick="sendQuick('What documents do we have indexed right now?')">
+      <span class="icon">🗂️</span>Document Index
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Any jobs with water damage that need mitigation follow-up?')">
+      <span class="icon">💧</span>Water / Mitigation
+    </button>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footer">
+      <span class="status-dot"></span>
+      Vertex AI · Gemini 1.5 Pro
+    </div>
+  </aside>
+
+  <!-- ── Chat ────────────────────────────────────────────────────────────── -->
+  <main class="chat-area">
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">🏗️</div>
+        <h2>Job Intelligence</h2>
+        <p>Ask anything about your jobs, claims, invoices, permits, or documents. I have access to your full indexed document library.</p>
+        <div class="welcome-examples">
+          <span class="example-chip" onclick="sendQuick('What\'s the status on the Northridge property?')">
+            Status on Northridge?
+          </span>
+          <span class="example-chip" onclick="sendQuick('How much are we owed on active jobs?')">
+            How much are we owed?
+          </span>
+          <span class="example-chip" onclick="sendQuick('Find all Brooklyn multi-family properties over $1M')">
+            Brooklyn multi-family over $1M
+          </span>
+          <span class="example-chip" onclick="sendQuick('Any failed inspections in the last 6 months?')">
+            Failed inspections?
+          </span>
+          <span class="example-chip" onclick="sendQuick('What insurance companies are we currently dealing with?')">
+            Active insurers?
+          </span>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="input-bar">
-    <div class="input-row">
-      <textarea id="qi" rows="1" placeholder="Ask about any job, permit, loan, or document…" onkeydown="hk(event)" oninput="ar(this)"></textarea>
-      <button id="send" onclick="send()" title="Send"><svg viewBox="0 0 24 24"><path d="M2 21L23 12 2 3v7l15 2-15 2v7z"/></svg></button>
+
+    <div class="input-bar">
+      <div class="input-row">
+        <textarea
+          id="queryInput"
+          rows="1"
+          placeholder="Ask about any job, claim, invoice, permit, or document…"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+        <button id="sendBtn" onclick="sendMessage()" title="Send (Enter)">
+          <svg viewBox="0 0 24 24"><path d="M2 21L23 12 2 3v7l15 2-15 2v7z"/></svg>
+        </button>
+      </div>
+      <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Context follows the conversation</div>
     </div>
-    <div class="hint">Enter to send · Shift+Enter for new line</div>
-  </div>
-</main>
+  </main>
+
 </div>
 
+<!-- ── Admin overlay ──────────────────────────────────────────────────────── -->
+<div id="admin-overlay" onclick="adminOverlayClick(event)">
+  <div id="admin-modal">
+    <div class="admin-header">
+      <h2>⚙ System Admin</h2>
+      <button class="admin-close" onclick="adminClose()" title="Close">✕</button>
+    </div>
+
+    <!-- Lock screen -->
+    <div id="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>Admin access required</p>
+      <input id="admin-pw-input" type="password" placeholder="password"
+             onkeydown="if(event.key==='Enter') adminUnlock()" autocomplete="off"/>
+      <button class="btn-unlock" onclick="adminUnlock()">UNLOCK</button>
+    </div>
+
+    <!-- Content (shown after unlock) -->
+    <div id="admin-content">
+
+      <div class="admin-section">
+        <div class="admin-section-title">Vertex AI Search — Index</div>
+        <div class="admin-row">
+          <span class="admin-label">Connection</span>
+          <span class="admin-val" id="adm-vertex">checking…</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Project ID</span>
+          <span class="admin-val" id="adm-project">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Engine ID</span>
+          <span class="admin-val" id="adm-engine">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Data Store</span>
+          <span class="admin-val" id="adm-datastore">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Docs Indexed</span>
+          <span class="admin-val" id="adm-indexed">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Tier</span>
+          <span class="admin-val" id="adm-tier">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Store Created</span>
+          <span class="admin-val" id="adm-created">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Gemini AI</div>
+        <div class="admin-row">
+          <span class="admin-label">Status</span>
+          <span class="admin-val" id="adm-gemini-status">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Model</span>
+          <span class="admin-val" id="adm-gemini-model">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Connectors</div>
+        <div class="admin-row">
+          <span class="admin-label">Google Drive</span>
+          <span class="admin-val" id="adm-gdrive">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Gmail</span>
+          <span class="admin-val" id="adm-gmail">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">OneDrive</span>
+          <span class="admin-val" id="adm-onedrive">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Session Usage &amp; Estimated Cost</div>
+        <div class="admin-row">
+          <span class="admin-label">Session started</span>
+          <span class="admin-val" id="adm-session-start">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Queries sent</span>
+          <span class="admin-val" id="adm-queries">0</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Vertex queries</span>
+          <span class="admin-val" id="adm-vertex-cost">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Gemini est. cost</span>
+          <span class="admin-val" id="adm-gemini-cost">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Session total est.</span>
+          <span class="admin-val" id="adm-total-cost">—</span>
+        </div>
+        <div class="cost-note">
+          Vertex Enterprise: $4.00 / 1,000 queries · Gemini 1.5 Flash: ~$0.002 / query avg<br>
+          Estimates only — actual charges visible in GCP Console &gt; Billing.
+        </div>
+      </div>
+
+      <div class="admin-refresh">
+        <button class="btn-refresh" onclick="adminLoadStatus()">↻ Refresh status</button>
+      </div>
+
+    </div><!-- /admin-content -->
+  </div><!-- /admin-modal -->
+</div><!-- /admin-overlay -->
+
 <script>
-let SID = null;
+// ── State ─────────────────────────────────────────────────────────────────────
+let sessionId = null;
 
-async function initSession(){
-  try{
-    const r = await fetch('/api/chat/new',{method:'POST'});
+// ── Session management ────────────────────────────────────────────────────────
+async function initSession() {
+  try {
+    const r = await fetch('/api/chat/new', { method: 'POST' });
     const d = await r.json();
-    SID = d.session_id;
-  }catch(e){ console.error('[Chat] Session init failed:',e); }
-}
-
-async function newChat(){
-  await initSession();
-  document.getElementById('msgs').innerHTML='';
-  const w = document.createElement('div'); w.id='welcome'; w.className='welcome';
-  w.innerHTML=`<div style="font-size:34px">🏗️</div><h2>Job Intelligence</h2><p>Ask anything about your jobs, permits, loans, appraisals, or documents.</p>`;
-  document.getElementById('msgs').appendChild(w);
-  document.getElementById('ctxBadge').classList.remove('on');
-  document.getElementById('qi').focus();
-}
-
-function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
-
-function hideWelcome(){const w=document.getElementById('welcome');if(w)w.style.display='none';}
-
-function appendUser(text){
-  hideWelcome();
-  const m=document.getElementById('msgs');
-  const d=document.createElement('div'); d.className='msg user';
-  d.innerHTML=`<div class="av">BOB</div><div class="mbody"><div class="bubble">${esc(text)}</div></div>`;
-  m.appendChild(d); scroll();
-}
-
-function appendTyping(){
-  hideWelcome();
-  const m=document.getElementById('msgs');
-  const d=document.createElement('div'); d.className='msg ai'; d.id='typing';
-  d.innerHTML=`<div class="av">MAC</div><div class="mbody"><div class="typing"><span></span><span></span><span></span></div></div>`;
-  m.appendChild(d); scroll();
-}
-
-function removeTyping(){const t=document.getElementById('typing');if(t)t.remove();}
-
-function appendAI(data){
-  var m=document.getElementById('msgs');
-  var conf=data.confidence||'none';
-  var badges={high:'OK',medium:'~',low:'Low',none:'No sources'};
-  var clabel=badges[conf]||conf;
-  var sources=data.sources||[];
-
-  // Source panel HTML — numbered to match [1][2] in answer
-  var srcPanel='';
-  if(sources.length){
-    srcPanel='<div style="margin-top:8px;padding:8px 10px;background:#1a1e24;border:1px solid #2c3038;border-radius:5px;display:flex;flex-direction:column;gap:5px">';
-    srcPanel+='<div style="font-size:10px;font-family:IBM Plex Mono,monospace;color:#6b7280;margin-bottom:2px;text-transform:uppercase;letter-spacing:.08em">Sources</div>';
-    for(var i=0;i<sources.length;i++){
-      var s=sources[i];
-      var title=typeof s==='object'?(s.title||s.source||'Document'):String(s);
-      var uri=typeof s==='object'?(s.uri||''):'';
-      var num='['+(i+1)+'] ';
-      var dlBtn='';
-      if(title){
-        dlBtn=' <a href="/api/download?title='+encodeURIComponent(title)+'" '
-          +'style="display:inline-block;background:#f5a623;color:#000;font-size:10px;'
-          +'padding:2px 8px;border-radius:3px;text-decoration:none;font-weight:600;'
-          +'margin-left:6px;font-family:IBM Plex Mono,monospace" title="Download '+esc(title)+'">⬇ Download</a>';
-      }
-      srcPanel+='<div style="font-size:12px;font-family:IBM Plex Mono,monospace;color:#9aa0a8;display:flex;align-items:center;flex-wrap:wrap">'
-        +'<span style="color:#f5a623;font-weight:600;margin-right:2px">'+num+'</span>'
-        +esc(title)+dlBtn+'</div>';
-    }
-    srcPanel+='</div>';
+    sessionId = d.session_id;
+    console.log('[Chat] Session:', sessionId);
+  } catch(e) {
+    console.error('[Chat] Session init failed:', e);
   }
-
-  var d=document.createElement('div');
-  d.className='msg ai';
-  d.innerHTML='<div class="av">MAC</div><div class="mbody">'
-    +'<div class="bubble">'+esc(data.answer)+'</div>'
-    +'<div class="meta">'
-    +'<span class="badge c-'+conf+'">'+clabel+'</span>'
-    +(data.search_results>0?' <span class="src-count">'+data.search_results+' doc'+(data.search_results!==1?'s':'')+'</span>':'')
-    +'</div>'
-    +srcPanel
-    +'</div>';
-  m.appendChild(d); scroll();
 }
 
-function appendErr(msg){
-  const m=document.getElementById('msgs');
-  const d=document.createElement('div'); d.className='msg ai';
-  d.innerHTML=`<div class="av">MAC</div><div class="mbody"><div class="bubble" style="color:#f87171;border-color:rgba(248,113,113,.3)">⚠ ${esc(msg)}</div></div>`;
-  m.appendChild(d); scroll();
+async function newChat() {
+  await initSession();
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('welcome').style.display = 'flex';
+  document.getElementById('messages').appendChild(document.getElementById('welcome'));
+  document.getElementById('jobContextBadge').classList.remove('visible');
+  document.getElementById('queryInput').focus();
 }
 
-async function send(){
-  const inp=document.getElementById('qi');
-  const q=inp.value.trim(); if(!q)return;
-  if(!SID) await initSession();
-  inp.value=''; ar(inp);
-  document.getElementById('send').disabled=true;
-  appendUser(q); appendTyping();
-  try{
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,session_id:SID})});
-    const data=await r.json(); removeTyping();
-    if(data.error){appendErr(data.error);}
-    else{
-      if(data.session_id) SID=data.session_id;
-      if(data.job_context){
-        document.getElementById('ctxLabel').textContent=data.job_context;
-        document.getElementById('ctxBadge').classList.add('on');
+// ── Message rendering ─────────────────────────────────────────────────────────
+function hideWelcome() {
+  const w = document.getElementById('welcome');
+  if (w) w.style.display = 'none';
+}
+
+function appendUserMessage(text) {
+  hideWelcome();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `
+    <div class="msg-avatar">BOB</div>
+    <div class="msg-body">
+      <div class="msg-bubble">${escHtml(text)}</div>
+    </div>`;
+  msgs.appendChild(div);
+  scrollBottom();
+}
+
+function appendTyping() {
+  hideWelcome();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.id = 'typing-msg';
+  div.innerHTML = `
+    <div class="msg-avatar">MAC</div>
+    <div class="msg-body">
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+      </div>
+    </div>`;
+  msgs.appendChild(div);
+  scrollBottom();
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing-msg');
+  if (t) t.remove();
+}
+
+function appendAiMessage(data) {
+  const msgs = document.getElementById('messages');
+  const conf = data.confidence || 'none';
+  const confClass = `conf-${conf}`;
+  const confLabel = {
+    high: '✓ High confidence', medium: '~ Medium', low: '⚠ Low', none: '✗ No sources'
+  }[conf] || conf;
+
+  // Sources
+  const sourcesHtml = (data.sources || []).length
+    ? `<div class="sources-row">
+        ${data.sources.map(s => `<span class="source-chip" title="${escHtml(s)}">${escHtml(s)}</span>`).join('')}
+       </div>`
+    : '';
+
+  // Follow-ups
+  const followupsHtml = (data.suggested_followups || []).length
+    ? `<div class="followups-row">
+        ${data.suggested_followups.map(f =>
+          `<button class="followup-btn" onclick="sendQuick(${JSON.stringify(f)})">${escHtml(f)}</button>`
+        ).join('')}
+       </div>`
+    : '';
+
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = `
+    <div class="msg-avatar">MAC</div>
+    <div class="msg-body">
+      <div class="msg-bubble">${escHtml(data.answer)}</div>
+      <div class="confidence-row">
+        <span class="confidence-badge ${confClass}">${confLabel}</span>
+        ${data.search_results > 0
+          ? `<span class="search-count">${data.search_results} doc${data.search_results !== 1 ? 's' : ''} searched</span>`
+          : ''}
+      </div>
+      ${sourcesHtml}
+      ${followupsHtml}
+    </div>`;
+  msgs.appendChild(div);
+  scrollBottom();
+}
+
+function appendError(msg) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = `
+    <div class="msg-avatar">MAC</div>
+    <div class="msg-body">
+      <div class="msg-bubble" style="color:#f87171; border-color:rgba(248,113,113,.3)">
+        ⚠ ${escHtml(msg)}
+      </div>
+    </div>`;
+  msgs.appendChild(div);
+  scrollBottom();
+}
+
+// ── Send logic ─────────────────────────────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('queryInput');
+  const query = input.value.trim();
+  if (!query) return;
+
+  // Ensure we have a session
+  if (!sessionId) await initSession();
+
+  // Update UI immediately
+  input.value = '';
+  autoResize(input);
+  document.getElementById('sendBtn').disabled = true;
+  appendUserMessage(query);
+  appendTyping();
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, session_id: sessionId }),
+    });
+    const data = await r.json();
+    removeTyping();
+
+    if (data.error) {
+      appendError(data.error);
+    } else {
+      // Update session ID in case it was newly created
+      if (data.session_id) sessionId = data.session_id;
+
+      // Update job context badge
+      if (data.job_context) {
+        document.getElementById('jobContextLabel').textContent = data.job_context;
+        document.getElementById('jobContextBadge').classList.add('visible');
       }
-      appendAI(data);
+      appendAiMessage(data);
     }
-  }catch(e){removeTyping();appendErr('Network error — is the server running?');}
-  finally{document.getElementById('send').disabled=false;inp.focus();}
+  } catch(e) {
+    removeTyping();
+    appendError('Network error — is the Flask server running?');
+  } finally {
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
 }
 
-function sq(text){document.getElementById('qi').value=text;send();}
-function hk(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
-function ar(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px';}
-function scroll(){const m=document.getElementById('msgs');m.scrollTop=m.scrollHeight;}
+function sendQuick(text) {
+  const input = document.getElementById('queryInput');
+  input.value = text;
+  sendMessage();
+}
 
+// ── Input helpers ──────────────────────────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function scrollBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '<br>');
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
 initSession();
-document.getElementById('qi').focus();
+document.getElementById('queryInput').focus();
 </script>
+
+<script>
+// ── Admin panel ───────────────────────────────────────────────────────────────
+// Change this password here -- it is stored only in memory, never sent to server
+const ADMIN_PASSWORD = 'madison2024';
+
+let _adminUnlocked  = false;
+let _sessionStart   = new Date();
+let _queryCount     = 0;   // incremented by sendMessage()
+let _statusCache    = null;
+
+function adminOpen() {
+  document.getElementById('admin-overlay').classList.add('open');
+  if (_adminUnlocked) {
+    adminShowContent();
+    adminLoadStatus();
+  } else {
+    document.getElementById('admin-pw-input').value = '';
+    setTimeout(() => document.getElementById('admin-pw-input').focus(), 80);
+  }
+}
+
+function adminClose() {
+  document.getElementById('admin-overlay').classList.remove('open');
+}
+
+function adminOverlayClick(e) {
+  if (e.target === document.getElementById('admin-overlay')) adminClose();
+}
+
+function adminUnlock() {
+  const pw = document.getElementById('admin-pw-input').value;
+  if (pw === ADMIN_PASSWORD) {
+    _adminUnlocked = true;
+    adminShowContent();
+    adminLoadStatus();
+  } else {
+    const inp = document.getElementById('admin-pw-input');
+    inp.value = '';
+    inp.classList.add('shake');
+    setTimeout(() => inp.classList.remove('shake'), 400);
+  }
+}
+
+function adminShowContent() {
+  document.getElementById('admin-lock').style.display    = 'none';
+  document.getElementById('admin-content').classList.add('visible');
+  // Session stats are local
+  document.getElementById('adm-session-start').textContent =
+    _sessionStart.toLocaleTimeString();
+}
+
+function adminLoadStatus() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(d => {
+      _statusCache = d;
+
+      // Vertex
+      const vok = d.vertex_ok;
+      document.getElementById('adm-vertex').innerHTML =
+        `<span class="admin-dot ${vok ? 'dot-green' : 'dot-red'}"></span>` +
+        (vok ? 'Connected' : 'ERROR: ' + (d.vertex_error || 'unknown'));
+
+      document.getElementById('adm-project').textContent   = d.project_id    || '—';
+      document.getElementById('adm-engine').textContent    = d.engine_id     || '—';
+      document.getElementById('adm-datastore').textContent = d.data_store_id || '—';
+
+      document.getElementById('adm-indexed').textContent =
+        (d.doc_count != null) ? d.doc_count + ' documents' : '—';
+
+      document.getElementById('adm-tier').innerHTML =
+        `<span class="admin-dot dot-amber"></span>` + (d.tier || '—');
+
+      document.getElementById('adm-created').textContent = d.ds_created || '—';
+
+      // Gemini
+      const p4 = d.phase4_enabled;
+      document.getElementById('adm-gemini-status').innerHTML =
+        `<span class="admin-dot ${p4 ? 'dot-green' : 'dot-amber'}"></span>` +
+        (p4 ? 'Enabled' : 'Disabled');
+      document.getElementById('adm-gemini-model').textContent = d.gemini_model || '—';
+
+      // Connectors
+      function connBadge(on) {
+        return `<span class="admin-dot ${on ? 'dot-green' : 'dot-red'}"></span>` +
+               (on ? 'Connected' : 'Disabled');
+      }
+      const c = d.connectors || {};
+      document.getElementById('adm-gdrive').innerHTML   = connBadge(c.gdrive);
+      document.getElementById('adm-gmail').innerHTML    = connBadge(c.gmail);
+      document.getElementById('adm-onedrive').innerHTML = connBadge(c.onedrive);
+
+      adminUpdateCosts();
+    })
+    .catch(e => {
+      document.getElementById('adm-vertex').innerHTML =
+        '<span class="admin-dot dot-red"></span>Cannot reach /api/status';
+    });
+}
+
+function adminUpdateCosts() {
+  // Vertex Enterprise: $4.00 per 1,000 queries
+  // Gemini 1.5 Flash avg query: ~500 input tokens + ~300 output tokens
+  //   Input:  $0.075/M tokens  → 500 tokens = $0.0000375
+  //   Output: $0.30/M tokens   → 300 tokens = $0.00009
+  //   Per query avg: ~$0.000128  ≈ $0.0001
+  const q  = _queryCount;
+  const vc = (q * 4.00 / 1000);
+  const gc = (q * 0.0001);
+  const tc = vc + gc;
+
+  document.getElementById('adm-queries').textContent      = q;
+  document.getElementById('adm-vertex-cost').textContent  = q > 0 ? '$' + vc.toFixed(5) : '$0.00000';
+  document.getElementById('adm-gemini-cost').textContent  = q > 0 ? '$' + gc.toFixed(5) : '$0.00000';
+  document.getElementById('adm-total-cost').textContent   = q > 0 ? '$' + tc.toFixed(5) : '$0.00000';
+}
+
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') adminClose();
+});
+
+// Hook into sendMessage to count queries
+const _origSend = window.sendMessage;
+window.sendMessage = async function() {
+  _queryCount++;
+  adminUpdateCosts();
+  return _origSend ? _origSend.apply(this, arguments) : undefined;
+};
+</script>
+
 </body>
 </html>
-

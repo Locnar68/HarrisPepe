@@ -479,6 +479,225 @@ html, body {
   font-family: var(--font-mono);
   text-align: center;
 }
+
+/* ── Admin button (header) ──────────────────────────────────── */
+.btn-admin {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: all 0.15s;
+  margin-left: 6px;
+}
+.btn-admin:hover { border-color: var(--amber); color: var(--amber); }
+
+/* ── Admin overlay ──────────────────────────────────────────── */
+#admin-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+#admin-overlay.open { display: flex; }
+
+#admin-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 560px;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  animation: adminIn 0.18s ease-out;
+}
+@keyframes adminIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+#admin-modal::-webkit-scrollbar { width: 4px; }
+#admin-modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-header h2 {
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.admin-close {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 20px; cursor: pointer; line-height: 1;
+  padding: 0 2px;
+  transition: color 0.12s;
+}
+.admin-close:hover { color: var(--text); }
+
+/* ── Lock screen ────────────────────────────────────────────── */
+#admin-lock {
+  padding: 36px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+#admin-lock .lock-icon { font-size: 32px; }
+#admin-lock p {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+#admin-pw-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 8px 14px;
+  outline: none;
+  width: 100%;
+  max-width: 280px;
+  text-align: center;
+  letter-spacing: 0.1em;
+  transition: border-color 0.15s;
+}
+#admin-pw-input:focus { border-color: var(--amber); }
+#admin-pw-input.shake {
+  animation: shake 0.35s ease;
+  border-color: #f87171;
+}
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  60%      { transform: translateX(6px); }
+}
+.btn-unlock {
+  background: var(--amber);
+  border: none;
+  border-radius: 5px;
+  color: #000;
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 8px 28px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-unlock:hover { background: #e09520; }
+
+/* ── Admin content ──────────────────────────────────────────── */
+#admin-content { display: none; padding: 20px 22px 24px; }
+#admin-content.visible { display: block; }
+
+.admin-section {
+  margin-bottom: 22px;
+}
+.admin-section-title {
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-dim);
+  margin-bottom: 10px;
+}
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-dim);
+  gap: 12px;
+}
+.admin-row:last-child { border-bottom: none; }
+.admin-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 110px;
+}
+.admin-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.dot-red   { background: #f87171; box-shadow: 0 0 5px rgba(248,113,113,.5); }
+.dot-amber { background: var(--amber); }
+.admin-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border-dim);
+  background: var(--surface2);
+  margin-left: 4px;
+}
+.ab-on  { color: var(--green);    border-color: rgba(74,222,128,.2); }
+.ab-off { color: var(--text-muted); }
+
+.admin-refresh {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.btn-refresh {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-refresh:hover { border-color: var(--amber); color: var(--amber); }
+
+.cost-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  line-height: 1.6;
+  border-top: 1px solid var(--border-dim);
+  padding-top: 10px;
+}
+
 </style>
 </head>
 <body>
@@ -502,6 +721,7 @@ html, body {
       <span id="jobContextLabel">—</span>
     </div>
     <button class="btn-new-chat" onclick="newChat()">+ New Chat</button>
+    <button class="btn-admin" onclick="adminOpen()">⚙ Admin</button>
   </header>
 
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
@@ -585,6 +805,122 @@ html, body {
   </main>
 
 </div>
+
+<!-- ── Admin overlay ──────────────────────────────────────────────────────── -->
+<div id="admin-overlay" onclick="adminOverlayClick(event)">
+  <div id="admin-modal">
+    <div class="admin-header">
+      <h2>⚙ System Admin</h2>
+      <button class="admin-close" onclick="adminClose()" title="Close">✕</button>
+    </div>
+
+    <!-- Lock screen -->
+    <div id="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>Admin access required</p>
+      <input id="admin-pw-input" type="password" placeholder="password"
+             onkeydown="if(event.key==='Enter') adminUnlock()" autocomplete="off"/>
+      <button class="btn-unlock" onclick="adminUnlock()">UNLOCK</button>
+    </div>
+
+    <!-- Content (shown after unlock) -->
+    <div id="admin-content">
+
+      <div class="admin-section">
+        <div class="admin-section-title">Vertex AI Search — Index</div>
+        <div class="admin-row">
+          <span class="admin-label">Connection</span>
+          <span class="admin-val" id="adm-vertex">checking…</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Project ID</span>
+          <span class="admin-val" id="adm-project">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Engine ID</span>
+          <span class="admin-val" id="adm-engine">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Data Store</span>
+          <span class="admin-val" id="adm-datastore">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Docs Indexed</span>
+          <span class="admin-val" id="adm-indexed">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Tier</span>
+          <span class="admin-val" id="adm-tier">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Store Created</span>
+          <span class="admin-val" id="adm-created">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Gemini AI</div>
+        <div class="admin-row">
+          <span class="admin-label">Status</span>
+          <span class="admin-val" id="adm-gemini-status">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Model</span>
+          <span class="admin-val" id="adm-gemini-model">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Connectors</div>
+        <div class="admin-row">
+          <span class="admin-label">Google Drive</span>
+          <span class="admin-val" id="adm-gdrive">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Gmail</span>
+          <span class="admin-val" id="adm-gmail">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">OneDrive</span>
+          <span class="admin-val" id="adm-onedrive">—</span>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-title">Session Usage &amp; Estimated Cost</div>
+        <div class="admin-row">
+          <span class="admin-label">Session started</span>
+          <span class="admin-val" id="adm-session-start">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Queries sent</span>
+          <span class="admin-val" id="adm-queries">0</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Vertex queries</span>
+          <span class="admin-val" id="adm-vertex-cost">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Gemini est. cost</span>
+          <span class="admin-val" id="adm-gemini-cost">—</span>
+        </div>
+        <div class="admin-row">
+          <span class="admin-label">Session total est.</span>
+          <span class="admin-val" id="adm-total-cost">—</span>
+        </div>
+        <div class="cost-note">
+          Vertex Enterprise: $4.00 / 1,000 queries · Gemini 1.5 Flash: ~$0.002 / query avg<br>
+          Estimates only — actual charges visible in GCP Console &gt; Billing.
+        </div>
+      </div>
+
+      <div class="admin-refresh">
+        <button class="btn-refresh" onclick="adminLoadStatus()">↻ Refresh status</button>
+      </div>
+
+    </div><!-- /admin-content -->
+  </div><!-- /admin-modal -->
+</div><!-- /admin-overlay -->
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -795,5 +1131,137 @@ function escHtml(s) {
 initSession();
 document.getElementById('queryInput').focus();
 </script>
+
+<script>
+// ── Admin panel ───────────────────────────────────────────────────────────────
+// Change this password here -- it is stored only in memory, never sent to server
+const ADMIN_PASSWORD = 'madison2024';
+
+let _adminUnlocked  = false;
+let _sessionStart   = new Date();
+let _queryCount     = 0;   // incremented by sendMessage()
+let _statusCache    = null;
+
+function adminOpen() {
+  document.getElementById('admin-overlay').classList.add('open');
+  if (_adminUnlocked) {
+    adminShowContent();
+    adminLoadStatus();
+  } else {
+    document.getElementById('admin-pw-input').value = '';
+    setTimeout(() => document.getElementById('admin-pw-input').focus(), 80);
+  }
+}
+
+function adminClose() {
+  document.getElementById('admin-overlay').classList.remove('open');
+}
+
+function adminOverlayClick(e) {
+  if (e.target === document.getElementById('admin-overlay')) adminClose();
+}
+
+function adminUnlock() {
+  const pw = document.getElementById('admin-pw-input').value;
+  if (pw === ADMIN_PASSWORD) {
+    _adminUnlocked = true;
+    adminShowContent();
+    adminLoadStatus();
+  } else {
+    const inp = document.getElementById('admin-pw-input');
+    inp.value = '';
+    inp.classList.add('shake');
+    setTimeout(() => inp.classList.remove('shake'), 400);
+  }
+}
+
+function adminShowContent() {
+  document.getElementById('admin-lock').style.display    = 'none';
+  document.getElementById('admin-content').classList.add('visible');
+  // Session stats are local
+  document.getElementById('adm-session-start').textContent =
+    _sessionStart.toLocaleTimeString();
+}
+
+function adminLoadStatus() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(d => {
+      _statusCache = d;
+
+      // Vertex
+      const vok = d.vertex_ok;
+      document.getElementById('adm-vertex').innerHTML =
+        `<span class="admin-dot ${vok ? 'dot-green' : 'dot-red'}"></span>` +
+        (vok ? 'Connected' : 'ERROR: ' + (d.vertex_error || 'unknown'));
+
+      document.getElementById('adm-project').textContent   = d.project_id    || '—';
+      document.getElementById('adm-engine').textContent    = d.engine_id     || '—';
+      document.getElementById('adm-datastore').textContent = d.data_store_id || '—';
+
+      document.getElementById('adm-indexed').textContent =
+        (d.doc_count != null) ? d.doc_count + ' documents' : '—';
+
+      document.getElementById('adm-tier').innerHTML =
+        `<span class="admin-dot dot-amber"></span>` + (d.tier || '—');
+
+      document.getElementById('adm-created').textContent = d.ds_created || '—';
+
+      // Gemini
+      const p4 = d.phase4_enabled;
+      document.getElementById('adm-gemini-status').innerHTML =
+        `<span class="admin-dot ${p4 ? 'dot-green' : 'dot-amber'}"></span>` +
+        (p4 ? 'Enabled' : 'Disabled');
+      document.getElementById('adm-gemini-model').textContent = d.gemini_model || '—';
+
+      // Connectors
+      function connBadge(on) {
+        return `<span class="admin-dot ${on ? 'dot-green' : 'dot-red'}"></span>` +
+               (on ? 'Connected' : 'Disabled');
+      }
+      const c = d.connectors || {};
+      document.getElementById('adm-gdrive').innerHTML   = connBadge(c.gdrive);
+      document.getElementById('adm-gmail').innerHTML    = connBadge(c.gmail);
+      document.getElementById('adm-onedrive').innerHTML = connBadge(c.onedrive);
+
+      adminUpdateCosts();
+    })
+    .catch(e => {
+      document.getElementById('adm-vertex').innerHTML =
+        '<span class="admin-dot dot-red"></span>Cannot reach /api/status';
+    });
+}
+
+function adminUpdateCosts() {
+  // Vertex Enterprise: $4.00 per 1,000 queries
+  // Gemini 1.5 Flash avg query: ~500 input tokens + ~300 output tokens
+  //   Input:  $0.075/M tokens  → 500 tokens = $0.0000375
+  //   Output: $0.30/M tokens   → 300 tokens = $0.00009
+  //   Per query avg: ~$0.000128  ≈ $0.0001
+  const q  = _queryCount;
+  const vc = (q * 4.00 / 1000);
+  const gc = (q * 0.0001);
+  const tc = vc + gc;
+
+  document.getElementById('adm-queries').textContent      = q;
+  document.getElementById('adm-vertex-cost').textContent  = q > 0 ? '$' + vc.toFixed(5) : '$0.00000';
+  document.getElementById('adm-gemini-cost').textContent  = q > 0 ? '$' + gc.toFixed(5) : '$0.00000';
+  document.getElementById('adm-total-cost').textContent   = q > 0 ? '$' + tc.toFixed(5) : '$0.00000';
+}
+
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') adminClose();
+});
+
+// Hook into sendMessage to count queries
+const _origSend = window.sendMessage;
+window.sendMessage = async function() {
+  _queryCount++;
+  adminUpdateCosts();
+  return _origSend ? _origSend.apply(this, arguments) : undefined;
+};
+</script>
+
 </body>
 </html>

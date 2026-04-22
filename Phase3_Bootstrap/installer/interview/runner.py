@@ -1,27 +1,24 @@
 """
-Interview orchestrator.
+Interview orchestrator -- unified Phase 3 + 4 + 5.
 
-Runs each interview section in order, assembles a :class:`Phase3Config`,
-and returns it. Each section is self-contained and writes its answers back
-into a partial config dict so a resumed run can skip already-answered bits.
-
-Section order (matters — later sections depend on earlier ones):
-
-    1. Business
-    2. Contact
-    3. GCP (project, billing, region)
-    4. Service account (name is derived from business display_name)
-    5. Storage (bucket names are derived from gcp.project_id for uniqueness)
-    6. Vertex AI Search (data store, engine, tier, layout parser)
-    7. Connectors menu  →  per-enabled connector questions
-    8. Security / final review
+Section order:
+  1. Business
+  2. Contact
+  3. GCP (project, billing, region)
+  4. Service account
+  5. Storage (bucket names derived from gcp.project_id)
+  6. Vertex AI Search (data store, engine, tier, layout parser)
+  7. Gemini / Phase 4 chat  <-- NEW
+  8. Connectors menu  -->  Gmail / GDrive / OneDrive  <-- OneDrive now live
+  9. Paths
+ 10. Assemble
+ 11. Review
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from installer.config.schema import (
     ConnectorConfig,
@@ -34,6 +31,8 @@ from installer.interview import (
     gcp as _gcp,
     gdrive_iv as _gdrive,
     gmail_iv as _gmail,
+    gemini_iv as _gemini,
+    onedrive_iv as _onedrive,
     storage as _storage,
     vertex as _vertex,
     connectors_menu as _connectors_menu,
@@ -51,14 +50,14 @@ def run_interview(
     install_path: Path,
     non_interactive: bool = False,
 ) -> Phase3Config:
-    """Collect every variable needed to provision the pipeline."""
+    """Collect every variable needed to provision the full pipeline."""
     ui.set_non_interactive(non_interactive)
 
     ui.section(
-        "Step 2 — Interactive interview",
-        "We'll ask about your business, GCP, storage, Vertex AI, and "
-        "which repositories to connect. About 15 minutes. You can press "
-        "Ctrl-C at any time — re-run with --resume to continue.",
+        "Step 2 -- Interactive interview",
+        "We'll ask about your business, GCP, storage, Vertex AI, Gemini\n"
+        "chat, and which data sources to connect.  About 15-20 minutes.\n"
+        "Press Ctrl-C at any time -- re-run with --resume to continue.",
     )
 
     # ---- 2a. Business ----------------------------------------------------
@@ -74,18 +73,19 @@ def run_interview(
     from installer.interview import service_account as _sa
     service_account = _sa.run(business, gcp)
 
-    # ---- 2e. Storage (needs gcp.project_id to generate collision-safe
-    #                   default bucket names) ------------------------------
+    # ---- 2e. Storage -----------------------------------------------------
     storage = _storage.run(business, gcp)
 
     # ---- 2f. Vertex AI Search -------------------------------------------
     vertex = _vertex.run(business)
 
-    # ---- 2g. Connectors --------------------------------------------------
+    # ---- 2g. Gemini / Phase 4 chat  (NEW) -------------------------------
+    gemini = _gemini.run()
+
+    # ---- 2h. Connectors --------------------------------------------------
     selected = _connectors_menu.run()
     connectors: list[ConnectorConfig] = []
 
-    # Build each enabled connector's config
     for name in ("gmail", "gdrive", "onedrive", "sql", "fileshare"):
         enabled = name in selected
         if not enabled:
@@ -95,15 +95,17 @@ def run_interview(
             connectors.append(_gmail.run(business, gcp))
         elif name == "gdrive":
             connectors.append(_gdrive.run(business, gcp))
+        elif name == "onedrive":
+            connectors.append(_onedrive.run())
         else:
-            # onedrive / sql / fileshare — stubs for Phase 4
-            ui.warn(f"Connector '{name}' is a Phase 4 stub — disabled for now.")
+            # sql / fileshare -- future stubs
+            ui.warn(f"Connector '{name}' is not yet implemented -- skipping.")
             connectors.append(ConnectorConfig(name=name, enabled=False))
 
-    # ---- 2h. Paths -------------------------------------------------------
+    # ---- 2i. Paths -------------------------------------------------------
     paths = PathsConfig(install_path=str(install_path.resolve()))
 
-    # ---- 2i. Assemble ----------------------------------------------------
+    # ---- 2j. Assemble ----------------------------------------------------
     cfg = Phase3Config(
         business=business,
         contact=contact,
@@ -111,11 +113,12 @@ def run_interview(
         service_account=service_account,
         storage=storage,
         vertex=vertex,
+        gemini=gemini,
         connectors=connectors,
         paths=paths,
     )
 
-    # ---- 2j. Review ------------------------------------------------------
+    # ---- 2k. Review ------------------------------------------------------
     _review.run(cfg)
 
     return cfg

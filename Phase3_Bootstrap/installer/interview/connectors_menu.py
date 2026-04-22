@@ -1,21 +1,18 @@
 """
-Connector selection.
+Connector selection menu.
 
-Previously this was a multi-select checkbox list, which turned out to be
-error-prone: it's easy to accidentally toggle a choice you didn't mean to.
-Now we ask once per connector, Y/N. Clearer, slower by a few seconds,
-but nobody enables connectors they didn't want.
+Asks once per connector Y/N.  OneDrive is now a first-class option --
+the old "ships in Phase 4" stub is gone.
 """
 
 from __future__ import annotations
-
 from installer.utils import ui
 
 
 def run() -> list[str]:
     ui.section(
-        "2g — Repositories / connectors",
-        "Pick which data sources you want the pipeline to ingest. "
+        "2h -- Data source connectors",
+        "Pick which sources to index into Vertex AI Search.\n"
         "You can always add more later by re-running with --resume.",
     )
 
@@ -24,14 +21,20 @@ def run() -> list[str]:
     if ui.ask_bool("Enable Gmail connector? (indexes a mailbox)", default=True):
         names.append("gmail")
 
-    if ui.ask_bool("Enable Google Drive connector? (indexes folders)", default=True):
+    if ui.ask_bool("Enable Google Drive connector? (indexes Drive folders)", default=True):
         names.append("gdrive")
 
-    # Phase 4 stubs — mention once, don't prompt
-    ui.note("(OneDrive / SharePoint / SQL / File share connectors ship in Phase 4.)")
+    if ui.ask_bool("Enable OneDrive / SharePoint connector? (indexes OneDrive folders)", default=False):
+        names.append("onedrive")
+
+    # sql / fileshare remain future stubs -- mention once, don't prompt
+    ui.note("(SQL / File share connectors are available as future add-ons.)")
 
     if not names:
-        ui.warn("No connectors selected — you'll have a working Vertex AI Search "
-                "data store but nothing will populate it. You can re-run the "
-                "bootstrap later to enable connectors.")
+        ui.warn(
+            "No connectors selected -- Vertex AI Search data store will be\n"
+            "created but nothing will populate it. Re-run with --resume to\n"
+            "enable connectors later."
+        )
+
     return names
