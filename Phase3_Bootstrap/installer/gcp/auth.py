@@ -31,7 +31,7 @@ def ensure_login(cfg: Phase3Config, *, dry_run: bool = False) -> None:
     else:
         ui.warn("No active gcloud account — launching `gcloud auth login`.")
         if not dry_run:
-            shell.run(["gcloud", "auth", "login", "--brief"], timeout=600)
+            shell.run(["gcloud", "auth", "login"], timeout=600)
             active = _active_account()
             if not active:
                 raise RuntimeError("Sign-in did not complete successfully.")
@@ -42,7 +42,7 @@ def ensure_login(cfg: Phase3Config, *, dry_run: bool = False) -> None:
         ui.note("Setting up Application Default Credentials...")
         if not dry_run:
             shell.run(
-                ["gcloud", "auth", "application-default", "login", "--brief"],
+                ["gcloud", "auth", "application-default", "login"],
                 timeout=600,
             )
         ui.success("Application-default credentials configured.")
