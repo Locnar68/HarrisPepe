@@ -28,6 +28,7 @@ import google.generativeai as genai
 from google.cloud import discoveryengine_v1 as discoveryengine
 from google.oauth2 import service_account
 from google.api_core.client_options import ClientOptions
+from google.protobuf.json_format import MessageToDict
 
 # ── Config — all values read from environment / .env ─────────────────────────
 # The bootstrap writes these into Phase3_Bootstrap/secrets/.env automatically.
@@ -39,7 +40,7 @@ ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
 MAX_RESULTS  = 12
-MAX_SEGMENTS = 20
+MAX_SEGMENTS = 10
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
 
@@ -281,25 +282,29 @@ class JobIntelligence:
             query=search_query,
             page_size=MAX_RESULTS,
             content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                extractive_content_spec=(
-                    discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-                        max_extractive_answer_count=3,
-                        max_extractive_segment_count=MAX_SEGMENTS,
-                    )
-                )
+                snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                    return_snippet=True,
+                ),
+                summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+                    summary_result_count=10,
+                    include_citations=True,
+                    ignore_adversarial_query=True,
+                    ignore_non_summary_seeking_query=False,
+                ),
             ),
         )
 
         try:
             response = self._search_client.search(request)
+            results  = list(response)
         except Exception as e:
-            print(f"[Vertex] Search error: {e}")
+            print("[Vertex] Search error:", e)
             return [], []
 
         excerpts    = []
         media_links = []
 
-        for result in response.results:
+        for result in results:
             doc = result.document
 
             # Read all struct_data fields safely
@@ -337,32 +342,35 @@ class JobIntelligence:
                 })
                 continue
 
-            # Regular docs: extract content
-            content = ""
-            try:
-                if doc.derived_struct_data:
-                    dsd = dict(doc.derived_struct_data)
-                    answers = dsd.get("extractive_answers", [])
-                    if isinstance(answers, list):
-                        for ans in answers:
-                            if isinstance(ans, dict):
-                                content += ans.get("content", "") + "\n"
-                    if not content:
-                        segs = dsd.get("extractive_segments", [])
-                        if isinstance(segs, list):
-                            for seg in segs:
-                                if isinstance(seg, dict):
-                                    content += seg.get("content", "") + "\n"
-            except Exception:
-                pass
-
-            if content.strip():
-                source_label = Path(source_uri).name if source_uri else title
+            # Regular docs -- collect source label for citation
+            # Content comes from response.summary.summary_text (read after loop)
+            source_label = Path(source_uri).name if source_uri else title
+            if source_label and source_label not in ("Unknown", ""):
                 excerpts.append({
                     "source":     source_label,
                     "source_uri": source_uri,
-                    "content":    content.strip(),
+                    "content":    "",   # filled in below from Vertex summary
                 })
+
+        # Read Vertex summary AFTER pager is materialized (critical ordering)
+        # Distribute summary text into the first excerpt so Gemini has context
+        try:
+            summary_text = ""
+            if hasattr(response, "summary") and response.summary:
+                summary_text = response.summary.summary_text or ""
+            if summary_text and excerpts:
+                excerpts[0]["content"] = summary_text
+            elif summary_text:
+                excerpts.append({
+                    "source":     "Vertex Summary",
+                    "source_uri": "",
+                    "content":    summary_text,
+                })
+        except Exception as e:
+            print("[Vertex] Summary read error:", e)
+
+        # Drop any excerpts that ended up with no content
+        excerpts = [e for e in excerpts if e["content"].strip()]
 
         return excerpts, media_links
 
