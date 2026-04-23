@@ -2,11 +2,17 @@
 Service account creation + role grant + key file.
 
 Idempotent: detects existing SA and skips creation. Role binding is done one
-role at a time so a partial failure doesn't roll back successful grants.
+role at a time so a partial failure does not roll back successful grants.
+
+Key file behaviour (changed from original):
+  - If the existing key belongs to a DIFFERENT project SA it is replaced.
+  - If it belongs to the correct SA it is left in place (avoids revoking
+    the key that may be in active use).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -27,7 +33,7 @@ def ensure_service_account(
                f"Creating {cfg.service_account.email} and granting "
                f"{len(cfg.service_account.roles)} roles.")
 
-    sa = cfg.service_account
+    sa      = cfg.service_account
     project = cfg.gcp.project_id
 
     # --- Check if SA already exists --------------------------------------
@@ -67,16 +73,33 @@ def ensure_service_account(
             ui.warn(f"role grant for {role} failed (may already be bound): "
                     f"{res.stderr.strip()[:120]}")
 
-    # --- Create JSON key -------------------------------------------------
+    # --- Create JSON key --------------------------------------------------
     key_path = install_path / "secrets" / "service-account.json"
     cfg.service_account.key_path = str(key_path)
+
     if dry_run:
         ui.note(f"[dry-run] would write key to {key_path}")
         return
 
+    # If a key file exists, check whether it belongs to THIS SA.
+    # If it belongs to a different SA (e.g. a leftover from a previous tenant)
+    # replace it so the new tenant's credentials are correct.
     if key_path.exists():
-        ui.warn(f"Key file already exists at {key_path}; leaving it in place.")
-        return
+        try:
+            existing = json.loads(key_path.read_text(encoding="utf-8"))
+            existing_email = existing.get("client_email", "")
+        except Exception:
+            existing_email = ""
+
+        if existing_email == sa.email:
+            ui.success(f"SA key already exists for {sa.email} — keeping it.")
+            return
+        else:
+            ui.warn(
+                f"Key file belongs to '{existing_email}', not '{sa.email}'.\n"
+                "  Replacing with correct key for this project."
+            )
+            key_path.unlink()
 
     key_path.parent.mkdir(parents=True, exist_ok=True)
     res = shell.run(
@@ -89,12 +112,10 @@ def ensure_service_account(
     if not res.ok:
         raise RuntimeError(f"Failed to create SA key: {res.stderr}")
 
-    # Harden perms on POSIX
     try:
         os.chmod(key_path, 0o600)
     except (OSError, NotImplementedError):
         pass
 
     ui.success(f"SA key written: {key_path}")
-    ui.warn("This file contains private key material. It is gitignored. "
-            "Do NOT commit it, email it, or paste into chats.")
+    ui.warn("Private key material — gitignored. Do NOT commit or share.")
