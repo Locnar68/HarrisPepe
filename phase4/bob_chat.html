@@ -698,6 +698,82 @@ html, body {
   padding-top: 10px;
 }
 
+
+/* ── Media tray (photos + document links) ──────────────────────────────────── */
+.media-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.media-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 220px;
+  max-width: 320px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.media-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border-radius: 8px;
+}
+.media-card.photo-card::before  { background: var(--amber-glow); }
+.media-card.doc-card::before    { background: rgba(74,222,128,0.04); }
+.media-card:hover { border-color: var(--amber); transform: translateY(-1px);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.media-card:hover::before { opacity: 1; }
+.media-card-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.media-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.media-card-title {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-card-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.media-card-action {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber);
+  margin-top: 3px;
+  letter-spacing: 0.03em;
+}
+.media-card.doc-card .media-card-action { color: var(--green); }
+.media-tray-label {
+  font-family: var(--font-head);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  width: 100%;
+  margin-bottom: -4px;
+}
 </style>
 </head>
 <body>
@@ -989,6 +1065,45 @@ function removeTyping() {
   if (t) t.remove();
 }
 
+function buildMediaTray(mediaLinks) {
+  if (!mediaLinks || !mediaLinks.length) return '';
+
+  const cards = mediaLinks.map(m => {
+    if (m.type === 'photos') {
+      const countLabel = m.count ? `${m.count} images` : 'images available';
+      const url = m.url || '#';
+      return `<a class="media-card photo-card" href="${escHtml(url)}" target="_blank" rel="noopener">
+        <div class="media-card-icon">📷</div>
+        <div class="media-card-body">
+          <div class="media-card-title">${escHtml(m.property || 'Property Photos')}</div>
+          <div class="media-card-sub">${escHtml(countLabel)}</div>
+          <div class="media-card-action">View in OneDrive →</div>
+        </div>
+      </a>`;
+    }
+    if (m.type === 'document') {
+      const sizeLabel = m.size_mb ? `${m.size_mb.toFixed(1)} MB PDF` : 'Document';
+      const url = m.url || '#';
+      const shortTitle = (m.title || 'Document').replace(/\.[^.]+$/, '');
+      return `<a class="media-card doc-card" href="${escHtml(url)}" target="_blank" rel="noopener">
+        <div class="media-card-icon">📄</div>
+        <div class="media-card-body">
+          <div class="media-card-title" title="${escHtml(m.title || '')}">${escHtml(shortTitle)}</div>
+          <div class="media-card-sub">${escHtml(sizeLabel)}</div>
+          <div class="media-card-action">Open Document →</div>
+        </div>
+      </a>`;
+    }
+    return '';
+  }).filter(Boolean);
+
+  if (!cards.length) return '';
+  return `<div class="media-tray">
+    <div class="media-tray-label">📎 Related files</div>
+    ${cards.join('')}
+  </div>`;
+}
+
 function appendAiMessage(data) {
   const msgs = document.getElementById('messages');
   const conf = data.confidence || 'none';
@@ -1003,6 +1118,9 @@ function appendAiMessage(data) {
         ${data.sources.map(s => `<span class="source-chip" title="${escHtml(s)}">${escHtml(s)}</span>`).join('')}
        </div>`
     : '';
+
+  // Media tray (photos + document links)
+  const mediaTrayHtml = buildMediaTray(data.media_links);
 
   // Follow-ups
   const followupsHtml = (data.suggested_followups || []).length
@@ -1026,6 +1144,7 @@ function appendAiMessage(data) {
           : ''}
       </div>
       ${sourcesHtml}
+      ${mediaTrayHtml}
       ${followupsHtml}
     </div>`;
   msgs.appendChild(div);

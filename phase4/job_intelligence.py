@@ -112,6 +112,10 @@ class IntelligenceResponse:
     confidence:      str          # "high" | "medium" | "low" | "none"
     job_context:     Optional[str]
     suggested_followups: list[str]
+    media_links:     list[dict] = field(default_factory=list)
+    # media_links entries:
+    #   photo pointer: {type:"photos", property:str, count:int, url:str}
+    #   large pdf:     {type:"document", title:str, size_mb:float, url:str}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -277,19 +281,59 @@ class JobIntelligence:
             print(f"[Vertex] Search error: {e}")
             return []
 
-        excerpts = []
+        excerpts     = []
+        media_links  = []
+
         for result in response.results:
             doc = result.document
 
-            # Get source URI from structData (safe path)
-            source_uri = ""
+            # Read struct_data safely
+            struct = {}
             try:
                 if doc.struct_data:
-                    source_uri = dict(doc.struct_data).get("source_uri", "")
+                    struct = dict(doc.struct_data)
             except Exception:
                 pass
 
-            # Get extractive content (avoid snippets — proto bug)
+            source_uri   = struct.get("source_uri", "")
+            doc_type     = struct.get("document_type", "")
+            onedrive_url = struct.get("onedrive_url", "")
+
+            # ── Pointer docs: extract media links, skip content extraction ──
+            if doc_type == "photo_index":
+                prop_name   = struct.get("property", struct.get("title", "Property"))
+                photo_count = struct.get("photo_count", 0)
+                if onedrive_url:
+                    media_links.append({
+                        "type":     "photos",
+                        "property": prop_name,
+                        "count":    photo_count,
+                        "url":      onedrive_url,
+                    })
+                # Also inject a brief content note so Gemini knows about photos
+                excerpts.append({
+                    "source":  f"{prop_name} (photo index)",
+                    "content": f"{photo_count} photos available for {prop_name} in OneDrive.",
+                })
+                continue
+
+            if doc_type == "large_pdf_pointer":
+                title   = struct.get("title", "Document")
+                size_mb = struct.get("size_mb", 0)
+                gcs_uri = struct.get("gcs_uri", "")
+                media_links.append({
+                    "type":    "document",
+                    "title":   title,
+                    "size_mb": size_mb,
+                    "url":     gcs_uri,
+                })
+                excerpts.append({
+                    "source":  title,
+                    "content": struct.get("summary", f"Large PDF: {title} ({size_mb:.1f} MB)"),
+                })
+                continue
+
+            # ── Regular docs: extract content ──────────────────────────────
             content = ""
             try:
                 if doc.derived_struct_data:
@@ -318,7 +362,15 @@ class JobIntelligence:
                     "content": content.strip(),
                 })
 
-        return excerpts
+        # Deduplicate media links by URL
+        seen_urls = set()
+        unique_media = []
+        for m in media_links:
+            if m.get("url") and m["url"] not in seen_urls:
+                seen_urls.add(m["url"])
+                unique_media.append(m)
+
+        return excerpts, unique_media
 
     # ── Gemini synthesis ───────────────────────────────────────────────────
     def synthesize(
@@ -397,7 +449,7 @@ class JobIntelligence:
             session.job_context = detected
 
         # Stage 1: Vertex retrieval
-        excerpts = self.retrieve(query, job_context=session.job_context)
+        excerpts, media_links = self.retrieve(query, job_context=session.job_context)
 
         # Stage 2: Gemini synthesis
         answer = self.synthesize(query, excerpts, session)
@@ -423,6 +475,7 @@ class JobIntelligence:
             confidence=confidence,
             job_context=session.job_context,
             suggested_followups=followups,
+            media_links=media_links,
         )
 
     def clear_session(self, session_id: str):
