@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Madison Ave — Job Intelligence</title>
+<title>Property Intelligence — Job Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -698,82 +698,6 @@ html, body {
   padding-top: 10px;
 }
 
-
-/* ── Media tray (photos + document links) ──────────────────────────────────── */
-.media-tray {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-}
-.media-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  min-width: 220px;
-  max-width: 320px;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-}
-.media-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
-  border-radius: 8px;
-}
-.media-card.photo-card::before  { background: var(--amber-glow); }
-.media-card.doc-card::before    { background: rgba(74,222,128,0.04); }
-.media-card:hover { border-color: var(--amber); transform: translateY(-1px);
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-.media-card:hover::before { opacity: 1; }
-.media-card-icon {
-  font-size: 26px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.media-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.media-card-title {
-  font-family: var(--font-body);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.media-card-sub {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.media-card-action {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--amber);
-  margin-top: 3px;
-  letter-spacing: 0.03em;
-}
-.media-card.doc-card .media-card-action { color: var(--green); }
-.media-tray-label {
-  font-family: var(--font-head);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  width: 100%;
-  margin-bottom: -4px;
-}
 </style>
 </head>
 <body>
@@ -788,8 +712,8 @@ html, body {
       </svg>
     </div>
     <div>
-      <div class="header-title">Madison <span>Ave</span> Construction</div>
-      <div class="header-sub">JOB INTELLIGENCE v4.0</div>
+      <div class="header-title">Property <span>Intelligence</span></div>
+      <div class="header-sub">DOORLOOP DOCUMENT SEARCH v4.0</div>
     </div>
     <div class="header-divider"></div>
     <div class="job-context-badge" id="jobContextBadge">
@@ -802,31 +726,46 @@ html, body {
 
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
   <aside class="sidebar">
-    <div class="sidebar-section">Quick Questions</div>
+    <div class="sidebar-section">Properties</div>
 
-    <button class="quick-btn" onclick="sendQuick('Which jobs are still open?')">
-      <span class="icon">📋</span>Open Jobs
+    <button class="quick-btn" onclick="sendQuick('Give me a full summary of 15 Northridge Drive — appraisal, P&L, permits, and status.')">
+      <span class="icon">🏠</span>15 Northridge Dr
     </button>
-    <button class="quick-btn" onclick="sendQuick('Do we have any unpaid invoices or outstanding balances?')">
-      <span class="icon">💰</span>Unpaid Invoices
+    <button class="quick-btn" onclick="sendQuick('What is the appraisal value and closing status of 98 Kingfisher Road?')">
+      <span class="icon">🏠</span>98 Kingfisher Rd
     </button>
-    <button class="quick-btn" onclick="sendQuick('Any insurance claims still waiting on adjuster response?')">
-      <span class="icon">📄</span>Pending Claims
+    <button class="quick-btn" onclick="sendQuick('Show me the P&L and any open invoices for 9 Andover Drive.')">
+      <span class="icon">🏠</span>9 Andover Drive
     </button>
-    <button class="quick-btn" onclick="sendQuick('Are there any permits expiring soon?')">
-      <span class="icon">🏗️</span>Permit Status
+    <button class="quick-btn" onclick="sendQuick('What is the status of 88 Rugby Drive West — closing docs, appraisal, any liens?')">
+      <span class="icon">🏠</span>88 Rugby Drive W
     </button>
-    <button class="quick-btn" onclick="sendQuick('What jobs are we currently working on in Brooklyn?')">
-      <span class="icon">📍</span>Brooklyn Jobs
+    <button class="quick-btn" onclick="sendQuick('Summarize 98 Hill Court — P&L, statements, and closing package.')">
+      <span class="icon">🏠</span>98 Hill Court
     </button>
-    <button class="quick-btn" onclick="sendQuick('Give me a summary of the most recent job we completed.')">
-      <span class="icon">✅</span>Last Completed Job
+    <button class="quick-btn" onclick="sendQuick('What documents do we have for 80 Reade Avenue and what is the financial summary?')">
+      <span class="icon">🏠</span>80 Reade Avenue
     </button>
-    <button class="quick-btn" onclick="sendQuick('What documents do we have indexed right now?')">
+
+    <div class="sidebar-section">Portfolio</div>
+
+    <button class="quick-btn" onclick="sendQuick('List all properties we have documents for and give me a one-line status on each.')">
+      <span class="icon">📋</span>All Properties
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Which properties have appraisals and what are the appraised values?')">
+      <span class="icon">💰</span>Appraisal Values
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Show me all properties that have closing packages — which ones have closed?')">
+      <span class="icon">✅</span>Closed Deals
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Which properties have outstanding invoices or unpaid balances?')">
+      <span class="icon">📊</span>Open Balances
+    </button>
+    <button class="quick-btn" onclick="sendQuick('Are there any flood disclosures or environmental issues across the portfolio?')">
+      <span class="icon">💧</span>Flood / Disclosures
+    </button>
+    <button class="quick-btn" onclick="sendQuick('What documents do we have indexed right now? List by property.')">
       <span class="icon">🗂️</span>Document Index
-    </button>
-    <button class="quick-btn" onclick="sendQuick('Any jobs with water damage that need mitigation follow-up?')">
-      <span class="icon">💧</span>Water / Mitigation
     </button>
 
     <div class="sidebar-spacer"></div>
@@ -840,24 +779,24 @@ html, body {
   <main class="chat-area">
     <div class="messages" id="messages">
       <div class="welcome" id="welcome">
-        <div class="welcome-icon">🏗️</div>
-        <h2>Job Intelligence</h2>
-        <p>Ask anything about your jobs, claims, invoices, permits, or documents. I have access to your full indexed document library.</p>
+        <div class="welcome-icon">🏢</div>
+        <h2>Property Intelligence</h2>
+        <p>Ask anything about your properties, appraisals, P&amp;Ls, closing docs, permits, or invoices. I have access to your full Doorloop document library.</p>
         <div class="welcome-examples">
-          <span class="example-chip" onclick="sendQuick('What\'s the status on the Northridge property?')">
-            Status on Northridge?
+          <span class="example-chip" onclick="sendQuick('Give me a full summary of 15 Northridge Drive.')">
+            Summarize Northridge
           </span>
-          <span class="example-chip" onclick="sendQuick('How much are we owed on active jobs?')">
-            How much are we owed?
+          <span class="example-chip" onclick="sendQuick('Which properties have the highest appraised values?')">
+            Highest appraisals?
           </span>
-          <span class="example-chip" onclick="sendQuick('Find all Brooklyn multi-family properties over $1M')">
-            Brooklyn multi-family over $1M
+          <span class="example-chip" onclick="sendQuick('Show me the P&L for 9 Andover Drive.')">
+            9 Andover P&amp;L
           </span>
-          <span class="example-chip" onclick="sendQuick('Any failed inspections in the last 6 months?')">
-            Failed inspections?
+          <span class="example-chip" onclick="sendQuick('Which deals have closed? Show me the closing packages.')">
+            Closed deals
           </span>
-          <span class="example-chip" onclick="sendQuick('What insurance companies are we currently dealing with?')">
-            Active insurers?
+          <span class="example-chip" onclick="sendQuick('Show me photos of 98 Kingfisher Road.')">
+            📷 Kingfisher photos
           </span>
         </div>
       </div>
@@ -868,7 +807,7 @@ html, body {
         <textarea
           id="queryInput"
           rows="1"
-          placeholder="Ask about any job, claim, invoice, permit, or document…"
+          placeholder="Ask about any property, appraisal, P&amp;L, closing doc, or invoice…"
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"
         ></textarea>
@@ -876,7 +815,7 @@ html, body {
           <svg viewBox="0 0 24 24"><path d="M2 21L23 12 2 3v7l15 2-15 2v7z"/></svg>
         </button>
       </div>
-      <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Context follows the conversation</div>
+      <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Try: "Show me photos of [property]"</div>
     </div>
   </main>
 
@@ -1065,45 +1004,6 @@ function removeTyping() {
   if (t) t.remove();
 }
 
-function buildMediaTray(mediaLinks) {
-  if (!mediaLinks || !mediaLinks.length) return '';
-
-  const cards = mediaLinks.map(m => {
-    if (m.type === 'photos') {
-      const countLabel = m.count ? `${m.count} images` : 'images available';
-      const url = m.url || '#';
-      return `<a class="media-card photo-card" href="${escHtml(url)}" target="_blank" rel="noopener">
-        <div class="media-card-icon">📷</div>
-        <div class="media-card-body">
-          <div class="media-card-title">${escHtml(m.property || 'Property Photos')}</div>
-          <div class="media-card-sub">${escHtml(countLabel)}</div>
-          <div class="media-card-action">View in OneDrive →</div>
-        </div>
-      </a>`;
-    }
-    if (m.type === 'document') {
-      const sizeLabel = m.size_mb ? `${m.size_mb.toFixed(1)} MB PDF` : 'Document';
-      const url = m.url || '#';
-      const shortTitle = (m.title || 'Document').replace(/\.[^.]+$/, '');
-      return `<a class="media-card doc-card" href="${escHtml(url)}" target="_blank" rel="noopener">
-        <div class="media-card-icon">📄</div>
-        <div class="media-card-body">
-          <div class="media-card-title" title="${escHtml(m.title || '')}">${escHtml(shortTitle)}</div>
-          <div class="media-card-sub">${escHtml(sizeLabel)}</div>
-          <div class="media-card-action">Open Document →</div>
-        </div>
-      </a>`;
-    }
-    return '';
-  }).filter(Boolean);
-
-  if (!cards.length) return '';
-  return `<div class="media-tray">
-    <div class="media-tray-label">📎 Related files</div>
-    ${cards.join('')}
-  </div>`;
-}
-
 function appendAiMessage(data) {
   const msgs = document.getElementById('messages');
   const conf = data.confidence || 'none';
@@ -1118,9 +1018,6 @@ function appendAiMessage(data) {
         ${data.sources.map(s => `<span class="source-chip" title="${escHtml(s)}">${escHtml(s)}</span>`).join('')}
        </div>`
     : '';
-
-  // Media tray (photos + document links)
-  const mediaTrayHtml = buildMediaTray(data.media_links);
 
   // Follow-ups
   const followupsHtml = (data.suggested_followups || []).length
@@ -1144,7 +1041,6 @@ function appendAiMessage(data) {
           : ''}
       </div>
       ${sourcesHtml}
-      ${mediaTrayHtml}
       ${followupsHtml}
     </div>`;
   msgs.appendChild(div);
