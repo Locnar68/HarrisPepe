@@ -45,6 +45,8 @@ def _write_env(cfg: Phase3Config, install_path: Path) -> None:
         f'GCP_REGION="{cfg.gcp.region}"',
         f'GCP_LOCATION="{cfg.gcp.location}"',
         f'GOOGLE_APPLICATION_CREDENTIALS="{cfg.service_account.key_path or ""}"',
+        # Explicit project ID for SDK clients that don't read it from the key
+        f'GOOGLE_CLOUD_PROJECT="{cfg.gcp.project_id}"',
         "",
         "# ── GCS Buckets ───────────────────────────────────────────────────",
         f'GCS_BUCKET_RAW="{cfg.storage.raw_bucket}"',
@@ -126,6 +128,14 @@ def _write_env(cfg: Phase3Config, install_path: Path) -> None:
     lines += [
         'LOG_LEVEL="INFO"',
         'DRY_RUN="false"',
+        "",
+        "# ── Cron / scheduler helpers ──────────────────────────────────────",
+        "# These are re-stated explicitly so scheduled sync jobs (OneDrive,",
+        "# GDrive) can source this file and run without any manual env exports.",
+        f'SA_KEY_PATH="{cfg.service_account.key_path or ""}"',
+        f'GCS_BUCKET_NAME="{cfg.storage.raw_bucket}"',
+        f'VERTEX_DATASTORE_ID="{cfg.vertex.data_store_id}"',
+        f'VERTEX_LOCATION="{cfg.gcp.location}"',
     ]
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
