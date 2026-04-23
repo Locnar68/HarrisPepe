@@ -29,17 +29,33 @@ from google.cloud import discoveryengine_v1 as discoveryengine
 from google.oauth2 import service_account
 from google.api_core.client_options import ClientOptions
 
-# ── Config ────────────────────────────────────────────────────────────────────
-PROJECT_ID   = "commanding-way-380716"
-ENGINE_ID    = "madison-ave-search-app"
-LOCATION     = "global"
-SA_KEY       = "service-account.json"
+# ── Config — all values read from environment / .env ─────────────────────────
+# The bootstrap writes these into Phase3_Bootstrap/secrets/.env automatically.
+import os as _os
+from pathlib import Path as _Path
 
-GEMINI_MODEL = "gemini-1.5-pro-002"   # Pro for better multi-field reasoning
-MAX_RESULTS  = 12                      # Vertex results per query
-MAX_SEGMENTS = 20                      # extractive segments per doc
-MAX_HISTORY  = 8                       # conversation turns to keep
-SESSION_TTL  = 3600                    # seconds before session expires
+PROJECT_ID   = _os.getenv("GCP_PROJECT_ID",       "commanding-way-380716")
+ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
+LOCATION     = _os.getenv("GCP_LOCATION",          "global")
+GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
+MAX_RESULTS  = 12
+MAX_SEGMENTS = 20
+MAX_HISTORY  = 8
+SESSION_TTL  = 3600
+
+def _resolve_sa_key() -> str:
+    explicit = _os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if explicit and _Path(explicit).exists():
+        return explicit
+    bootstrap_key = _Path(__file__).resolve().parent.parent / "Phase3_Bootstrap" / "secrets" / "service-account.json"
+    if bootstrap_key.exists():
+        return str(bootstrap_key)
+    local_key = _Path(__file__).parent / "service-account.json"
+    if local_key.exists():
+        return str(local_key)
+    return "service-account.json"
+
+SA_KEY = _resolve_sa_key()
 
 
 # ── System prompt  ────────────────────────────────────────────────────────────
