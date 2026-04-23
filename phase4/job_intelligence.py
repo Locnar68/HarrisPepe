@@ -39,7 +39,7 @@ PROJECT_ID   = _os.getenv("GCP_PROJECT_ID",       "commanding-way-380716")
 ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
-MAX_RESULTS  = 12
+MAX_RESULTS  = 20
 MAX_SEGMENTS = 10
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
@@ -374,6 +374,126 @@ class JobIntelligence:
 
         return excerpts, media_links
 
+
+    # ── Photo pointer lookup ───────────────────────────────────────────────
+    def _photo_lookup(self, address: str) -> list[dict]:
+        """
+        Dedicated search for photo_index pointer docs.
+        Detects photo pointers two ways:
+          1. struct_data.document_type == "photo_index"  (after permanent sync fix)
+          2. doc.id starts with "photo_pointer"          (jsonData-only imports)
+        For case 2, parses the OneDrive URL from snippet text via regex.
+        """
+        import re as _re
+        if not address:
+            return []
+
+        queries = [
+            f"{address} photos OneDrive images",
+            f"photo pointer {address} photos",
+        ]
+        media_links = []
+        seen_urls:  set = set()
+        seen_ids:   set = set()
+
+        for q in queries:
+            try:
+                req = discoveryengine.SearchRequest(
+                    serving_config=self._serving_config,
+                    query=q,
+                    page_size=30,
+                    content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
+                        snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                            return_snippet=True),
+                        summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+                            summary_result_count=10,
+                            include_citations=False,
+                            ignore_adversarial_query=True,
+                            ignore_non_summary_seeking_query=False,
+                        ),
+                    ),
+                )
+                resp    = self._search_client.search(req)
+                results = list(resp)
+
+                for r in results:
+                    doc = r.document
+                    if doc.id in seen_ids:
+                        continue
+                    seen_ids.add(doc.id)
+
+                    # Path 1: struct_data populated (after sync fix)
+                    struct = {}
+                    try:
+                        if doc.struct_data:
+                            struct = dict(doc.struct_data)
+                    except Exception:
+                        pass
+
+                    doc_type     = struct.get("document_type", "")
+                    onedrive_url = struct.get("onedrive_url", "")
+                    title        = struct.get("title", "")
+                    photo_count  = struct.get("photo_count", 0)
+
+                    if doc_type == "photo_index" and onedrive_url:
+                        if onedrive_url not in seen_urls:
+                            seen_urls.add(onedrive_url)
+                            media_links.append({
+                                "type":  "photo",
+                                "title": title,
+                                "url":   onedrive_url,
+                                "count": int(photo_count) if photo_count else 0,
+                            })
+                        continue
+
+                    # Path 2: jsonData-only doc — detect by doc.id prefix
+                    if not doc.id.startswith("photo_pointer"):
+                        continue
+
+                    # Extract OneDrive URL from snippet or summary text
+                    snippet_text = ""
+                    try:
+                        from google.protobuf.json_format import MessageToDict as _M2D
+                        dsd = _M2D(doc.derived_struct_data)
+                        for s in dsd.get("snippets", []):
+                            snippet_text += s.get("snippet", "") + " "
+                    except Exception:
+                        pass
+
+                    # Also try reading from the Vertex per-result extractive content
+                    url_match   = _re.search(r"https://\S+sharepoint\S+", snippet_text)
+                    count_match = _re.search(r"(\d+)\s+photos?", snippet_text, _re.IGNORECASE)
+                    title_match = _re.search(r'"title":\s*"([^"]+)"', snippet_text)
+
+                    if url_match:
+                        od_url = url_match.group(0).rstrip(".,;")
+                        if od_url not in seen_urls:
+                            seen_urls.add(od_url)
+                            t = title_match.group(1) if title_match else f"{address} — Photos"
+                            c = int(count_match.group(1)) if count_match else 0
+                            media_links.append({
+                                "type":  "photo",
+                                "title": t,
+                                "url":   od_url,
+                                "count": c,
+                            })
+                    else:
+                        # URL not in snippet — record placeholder so user knows photos exist
+                        if doc.id not in seen_ids:
+                            t = title_match.group(1) if title_match else f"{address} — Photos"
+                            c = int(count_match.group(1)) if count_match else 0
+                            media_links.append({
+                                "type":  "photo",
+                                "title": t + " (open OneDrive to view)",
+                                "url":   "#",
+                                "count": c,
+                            })
+
+            except Exception as e:
+                print(f"[Vertex] Photo lookup error: {e}")
+
+        return media_links
+
     # ── Gemini synthesis ───────────────────────────────────────────────────
     def synthesize(
         self,
@@ -452,6 +572,13 @@ class JobIntelligence:
 
         # Stage 1: Vertex retrieval
         excerpts, media_links = self.retrieve(query, job_context=session.job_context)
+
+        # Supplement with dedicated photo lookup if query is photo-related
+        _photo_words = ("photo", "photos", "picture", "pictures", "image", "images", "show me")
+        if any(w in query.lower() for w in _photo_words):
+            extra = self._photo_lookup(session.job_context or query)
+            seen  = {m["url"] for m in media_links}
+            media_links += [m for m in extra if m["url"] not in seen]
 
         # Stage 2: Gemini synthesis
         answer = self.synthesize(query, excerpts, session)

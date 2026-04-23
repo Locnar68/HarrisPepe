@@ -16,6 +16,25 @@ See bootstrap_onedrive.py for full instructions.
 """
 
 import os, sys, json, time, logging, argparse, requests, msal
+# Phase 6: lazy-loaded OCR + metadata enrichment
+_P6_LOADED = False
+_enrich_metadata = None
+_needs_ocr       = None
+_ocr_pdf_gcs     = None
+
+def _load_phase6():
+    global _P6_LOADED, _enrich_metadata, _needs_ocr, _ocr_pdf_gcs
+    if _P6_LOADED:
+        return
+    try:
+        from phase6_ocr_metadata import enrich_metadata, needs_ocr, ocr_pdf_gcs
+        _enrich_metadata = enrich_metadata
+        _needs_ocr       = needs_ocr
+        _ocr_pdf_gcs     = ocr_pdf_gcs
+        log.info("Phase 6 OCR+metadata loaded.")
+    except ImportError:
+        pass
+    _P6_LOADED = True
 from datetime import datetime, timezone
 from pathlib import Path
 from google.cloud import storage
@@ -270,7 +289,22 @@ def _build_photo_pointer_docs(token: str, drive_id: str, folder_path: str, items
                 f"Click here to view them: {od_url}"
             ),
         }
-        pointer_docs.append({"id": doc_id, "jsonData": json.dumps(json_data)})
+        # Write BOTH structData (for Vertex ranking/filtering) and
+        # jsonData (for full-text search content). structData lets
+        # retrieve() detect photo_index docs by document_type field.
+        struct_data = {
+            "title":         json_data["title"],
+            "property":      prop_name,
+            "document_type": "photo_index",
+            "photo_count":   photo_count,
+            "onedrive_url":  od_url,
+            "source_uri":    od_url,
+        }
+        pointer_docs.append({
+            "id":         doc_id,
+            "jsonData":   json.dumps(json_data),
+            "structData": json.dumps(struct_data),
+        })
         log.info(f"  Photo pointer: {prop_name} ({photo_count} photos)")
 
     return pointer_docs
@@ -310,24 +344,48 @@ def _build_and_upload_manifest(dry_run: bool, token: str = "", drive_id: str = "
 
         # Large PDFs: pointer doc only (no content extraction)
         if ext == ".pdf" and blob.size and blob.size > _LARGE_PDF_BYTES:
-            size_mb = blob.size / (1024 * 1024)
-            lines.append(json.dumps({
-                "id": doc_id,
-                "jsonData": json.dumps({
-                    "title":         title,
-                    "document_type": "large_pdf_pointer",
-                    "size_mb":       round(size_mb, 1),
-                    "gcs_uri":       uri,
-                    "summary":       f"{title} is a {size_mb:.1f} MB PDF. GCS path: {uri}",
-                }),
-            }))
+            size_mb   = blob.size / (1024 * 1024)
+            base_meta = {
+                "title":         title,
+                "document_type": "large_pdf_pointer",
+                "size_mb":       round(size_mb, 1),
+                "gcs_uri":       uri,
+                "summary":       f"{title} is a {size_mb:.1f} MB PDF. GCS path: {uri}",
+            }
+            _load_phase6()
+            if _enrich_metadata:
+                base_meta = _enrich_metadata(blob.name, base_meta)
+                base_meta["document_type"] = "large_pdf_pointer"
+            lines.append(json.dumps({"id": doc_id, "jsonData": json.dumps(base_meta)}))
             count_large += 1
         else:
-            lines.append(json.dumps({
-                "id":       doc_id,
-                "jsonData": json.dumps({"title": title, "source_uri": uri}),
-                "content":  {"mimeType": _MIME_MAP.get(ext, "application/pdf"), "uri": uri},
-            }))
+            base_struct = {"title": title, "source_uri": uri}
+            _load_phase6()
+            if _enrich_metadata:
+                base_struct = _enrich_metadata(blob.name, base_struct)
+            # OCR for scanned PDFs (fires only if DOCAI_PROCESSOR_ID is in .env)
+            ocr_text = None
+            if _needs_ocr and _ocr_pdf_gcs and ext == ".pdf":
+                if _needs_ocr(blob.name, blob.size or 0):
+                    ocr_text = _ocr_pdf_gcs(uri, GCP_PROJECT_ID)
+            if ocr_text:
+                import base64
+                lines.append(json.dumps({
+                    "id":       doc_id,
+                    "jsonData": json.dumps(base_struct),
+                    "content":  {
+                        "mimeType": "text/plain",
+                        "rawBytes": base64.b64encode(
+                            ocr_text.encode("utf-8")
+                        ).decode("ascii"),
+                    },
+                }))
+            else:
+                lines.append(json.dumps({
+                    "id":       doc_id,
+                    "jsonData": json.dumps(base_struct),
+                    "content":  {"mimeType": _MIME_MAP.get(ext, "application/pdf"), "uri": uri},
+                }))
             count_docs += 1
 
     # Photo pointer docs (one per property, with OneDrive URL)

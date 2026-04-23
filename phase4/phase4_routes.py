@@ -150,7 +150,25 @@ def bob_dashboard():
     Looks for bob_chat.html in Flask's templates folder.
     """
     try:
-        return render_template("bob_chat.html")
+        import os as _os
+        company = _os.getenv("COMPANY_NAME", "").strip()
+        gemini  = _os.getenv("GEMINI_MODEL", "Gemini").replace("models/", "").replace(r"-\d{8}$", "")
+        # Split company name for amber accent on last word if business type
+        biz_words = {"construction","realty","realtors","group","llc","inc","corp","properties"}
+        parts = company.split()
+        if len(parts) > 1 and parts[-1].lower() in biz_words:
+            company_main = " ".join(parts[:-1])
+            company_accent = parts[-1]
+        else:
+            company_main   = company
+            company_accent = ""
+        return render_template(
+            "bob_chat.html",
+            company=company,
+            company_main=company_main,
+            company_accent=company_accent,
+            gemini_model=gemini,
+        )
     except Exception:
         # If template isn't found, serve the file directly from phase4 folder
         import os

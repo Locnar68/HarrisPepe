@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Property Intelligence — Job Dashboard</title>
+<title>{% if company %}{{ company }} — Bob{% else %}Property Intelligence{% endif %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,14 +43,16 @@ html, body {
   font-size: 14px;
   line-height: 1.6;
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 /* ── Layout grid ───────────────────────────────────────────────────────── */
 .app {
   display: grid;
-  grid-template-rows: 56px 1fr 0;
+  grid-template-rows: 56px 1fr;
   grid-template-columns: 260px 1fr;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
 }
 
 /* ── Header ────────────────────────────────────────────────────────────── */
@@ -59,11 +61,15 @@ html, body {
   grid-row: 1;
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  gap: 14px;
-  z-index: 10;
+  gap: 8px;
+  z-index: 60;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  flex-wrap: nowrap;
 }
 .header-logo {
   width: 34px; height: 34px;
@@ -82,6 +88,7 @@ html, body {
   text-transform: uppercase;
 }
 .header-title span { color: var(--amber); }
+.header-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
 .header-sub {
   font-size: 11px;
   color: var(--text-muted);
@@ -199,17 +206,21 @@ html, body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   position: relative;
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   scroll-behavior: smooth;
+  min-width: 0;
 }
 .messages::-webkit-scrollbar { width: 5px; }
 .messages::-webkit-scrollbar-track { background: transparent; }
@@ -309,8 +320,11 @@ html, body {
   border-radius: 6px;
   font-size: 13.5px;
   line-height: 1.65;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 .msg.user .msg-bubble {
   background: var(--user-bg);
@@ -372,45 +386,24 @@ html, body {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
-  text-decoration: none;
+  transition: color 0.12s, border-color 0.12s;
 }
-.source-chip:hover { color: var(--amber); border-color: rgba(245,166,35,.3); background: var(--amber-glow); }
+.source-chip:hover { color: var(--amber); border-color: rgba(245,166,35,.3); }
 
-/* ── Media tray (photo + large PDF cards) ──────────────────────────────── */
-.media-tray {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
+/* ── Media tray ── */
+.media-tray { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .media-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  cursor: pointer;
-  text-decoration: none;
-  max-width: 280px;
-  overflow: hidden;
-  transition: opacity 0.15s;
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: 5px; font-size: 11px; font-family: var(--font-mono);
+  cursor: pointer; text-decoration: none; max-width: 280px;
+  overflow: hidden; transition: opacity 0.15s;
 }
 .media-card:hover { opacity: 0.8; }
-.media-card-photo {
-  background: var(--amber-dim);
-  border: 1px solid rgba(245,166,35,.35);
-  color: var(--amber);
-}
-.media-card-pdf {
-  background: var(--green-dim);
-  border: 1px solid rgba(74,222,128,.3);
-  color: var(--green);
-}
-.media-card-icon { font-size: 14px; flex-shrink: 0; }
+.media-card-photo { background: var(--amber-dim); border: 1px solid rgba(245,166,35,.35); color: var(--amber); }
+.media-card-pdf   { background: var(--green-dim);  border: 1px solid rgba(74,222,128,.3);  color: var(--green); }
+.media-card-icon  { font-size: 14px; flex-shrink: 0; }
 .media-card-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 
 /* Suggested follow-ups */
 .followups-row {
@@ -735,6 +728,119 @@ html, body {
   padding-top: 10px;
 }
 
+
+/* ══════════════════════════════════════════════════/* ============================================================================
+   MOBILE / RESPONSIVE  breakpoint 640px
+   ============================================================================ */
+
+.btn-menu {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  padding: 4px 10px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+.btn-menu:hover { color: var(--amber); }
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 49;
+}
+
+@media (max-width: 640px) {
+
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px 1fr;
+  }
+
+  .btn-menu     { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .header-logo  { width: 26px; height: 26px; flex-shrink: 0; }
+  .header-title { font-size: 11px; letter-spacing: 0.03em; min-width: 0; }
+  .header-sub   { font-size: 8px; }
+  .btn-new-chat { display: none; }
+  .btn-admin    { padding: 4px 8px; font-size: 10px; margin-left: auto; flex-shrink: 0; }
+  .header-divider    { display: none; }
+  .job-context-badge { display: none !important; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    bottom: 0;
+    width: 260px;
+    z-index: 50;
+    transition: left 0.24s cubic-bezier(.4,0,.2,1);
+    overflow-y: auto;
+  }
+  .sidebar.open {
+    left: 0;
+    box-shadow: 6px 0 32px rgba(0,0,0,0.55);
+  }
+  .sidebar-backdrop.open { display: block; }
+
+  .chat-area {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .messages { padding: 12px 10px; }
+  .msg      { max-width: 100%; }
+  .msg.user { max-width: 88%; }
+
+  .input-bar {
+    padding: 8px 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  }
+  .input-hint { display: none; }
+  #sendBtn    { width: 42px; height: 42px; flex-shrink: 0; }
+  #queryInput { font-size: 16px; }
+
+  .welcome-examples { max-width: 100%; padding: 0 4px; }
+  .example-chip     { font-size: 11px; padding: 5px 10px; }
+
+  .sources-row { gap: 5px; }
+  .media-tray  { gap: 6px; }
+  .source-chip { max-width: 180px; }
+
+  #admin-overlay { align-items: flex-end; }
+  #admin-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .quick-btn { padding: 11px 16px; font-size: 13px; }
+  .followups-row { flex-direction: column; gap: 5px; }
+  .followup-btn  { width: 100%; text-align: left; }
+  .source-chip   { max-width: calc(100vw - 48px); }
+  .media-card    { max-width: calc(100vw - 48px); }
+}
+
+
+/* Markdown body overflow safety */
+.md-body img, .md-body table, .md-body pre, .md-body code {
+  max-width: 100%;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+.md-body table { border-collapse: collapse; font-size: 12px; }
+.md-body th, .md-body td { padding: 4px 8px; border: 1px solid var(--border); }
+.md-body ul, .md-body ol  { padding-left: 1.4em; }
+.md-body p  { margin: 0.3em 0; }
+.md-body h3, .md-body h4  { margin: 0.5em 0 0.2em; color: var(--amber); font-family: var(--font-head); }
+
 </style>
 </head>
 <body>
@@ -749,20 +855,24 @@ html, body {
       </svg>
     </div>
     <div>
-      <div class="header-title">Property <span>Intelligence</span></div>
-      <div class="header-sub">DOORLOOP DOCUMENT SEARCH v4.0</div>
+      <div class="header-title" id="headerTitle">{% if company_accent %}{{ company_main }} <span>{{ company_accent }}</span>{% elif company %}{{ company }}{% else %}Property <span>Intelligence</span>{% endif %}</div>
+      <div class="header-sub" id="headerSub">{% if company %}DOCUMENT INTELLIGENCE{% else %}DOCUMENT SEARCH{% endif %}</div>
     </div>
     <div class="header-divider"></div>
     <div class="job-context-badge" id="jobContextBadge">
       <span class="dot"></span>
       <span id="jobContextLabel">—</span>
     </div>
+    <button class="btn-menu" id="menuBtn" onclick="sidebarOpen()" aria-label="Menu">&#9776;</button>
     <button class="btn-new-chat" onclick="newChat()">+ New Chat</button>
     <button class="btn-admin" onclick="adminOpen()">⚙ Admin</button>
   </header>
 
+  <!-- Sidebar backdrop (mobile drawer overlay) -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="sidebarClose()"></div>
+
   <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-section">Properties</div>
 
     <button class="quick-btn" onclick="sendQuick('Give me a full summary of 15 Northridge Drive — appraisal, P&L, permits, and status.')">
@@ -808,7 +918,7 @@ html, body {
     <div class="sidebar-spacer"></div>
     <div class="sidebar-footer">
       <span class="status-dot"></span>
-      Vertex AI · Gemini 1.5 Pro
+      <span id="sidebarFooterText">Vertex AI · {% if gemini_model %}{{ gemini_model }}{% else %}Gemini{% endif %}</span>
     </div>
   </aside>
 
@@ -1050,39 +1160,28 @@ function appendAiMessage(data) {
   }[conf] || conf;
 
   // Sources
-  // sources is array of strings (filenames); build download chips
   const sourcesHtml = (data.sources || []).length
     ? `<div class="sources-row">
         ${data.sources.map(s => {
           const uri = (data.source_uris || {})[s] || '';
-          const href = uri
-            ? `/api/download?uri=${encodeURIComponent(uri)}`
-            : '#';
-          const target = uri ? ' target="_blank"' : '';
-          return `<a class="source-chip" href="${href}"${target} title="Download ${escHtml(s)}" download>📄 ${escHtml(s)}</a>`;
+          const href = uri ? `/api/download?uri=${encodeURIComponent(uri)}` : '#';
+          const tgt  = uri ? ' target="_blank"' : '';
+          return `<a class="source-chip" href="${href}"${tgt} title="Download ${escHtml(s)}">📄 ${escHtml(s)}</a>`;
         }).join('')}
        </div>`
     : '';
 
   // Follow-ups
-  // Media cards: photo folders (amber) and large PDF pointers (green)
   const mediaTrayHtml = (data.media_links || []).length
     ? `<div class="media-tray">
         ${data.media_links.map(m => {
           const isPhoto = m.type === 'photo';
           const cls   = isPhoto ? 'media-card-photo' : 'media-card-pdf';
-          const icon  = isPhoto ? '📷' : '📋';
-          const label = isPhoto
-            ? `${m.title}${m.count ? ' (' + m.count + ')' : ''}`
-            : m.title;
-          const href  = isPhoto
-            ? m.url
-            : (m.url.startsWith('gs://') ? '/api/download?uri=' + encodeURIComponent(m.url) : m.url);
-          const target = isPhoto ? ' target="_blank"' : '';
-          return `<a class="media-card ${cls}" href="${href}"${target}>
-            <span class="media-card-icon">${icon}</span>
-            <span class="media-card-label">${escHtml(label)}</span>
-          </a>`;
+          const icon  = isPhoto ? '\u{1F4F7}' : '\u{1F4CB}';
+          const label = isPhoto ? m.title + (m.count ? ' (' + m.count + ')' : '') : m.title;
+          const href  = isPhoto ? m.url : (m.url.startsWith('gs://') ? '/api/download?uri=' + encodeURIComponent(m.url) : m.url);
+          const tgt   = isPhoto ? ' target="_blank"' : '';
+          return '<a class="media-card ' + cls + '" href="' + href + '"' + tgt + '><span class="media-card-icon">' + icon + '</span><span class="media-card-label">' + escHtml(label) + '</span></a>';
         }).join('')}
        </div>`
     : '';
@@ -1201,15 +1300,40 @@ function scrollBottom() {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-// renderMarkdown: safe markdown → HTML (uses marked.js if available)
+// ── Mobile sidebar drawer ──────────────────────────────────────────────────
+function sidebarOpen() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarBackdrop').classList.add('open');
+}
+function sidebarClose() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('open');
+}
+// Close sidebar when a quick-btn is tapped on mobile
+document.addEventListener('DOMContentLoaded', function() {
+  // Close sidebar on quick-btn tap (mobile)
+  document.querySelectorAll('.quick-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (window.innerWidth <= 640) sidebarClose();
+    });
+  });
+
+  // Auto-fetch status on load — updates header company name + footer
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(d => {
+      // Company name already set server-side via Jinja2 — no JS update needed
+      // Update sidebar footer with live model name
+      const model = (d.gemini_model || 'Gemini').replace('models/', '').replace(/-\d{8}$/, '');
+      document.getElementById('sidebarFooterText').textContent =
+        'Vertex AI · ' + model;
+    })
+    .catch(() => {}); // silent fail — admin panel will show error
+});
+
 function renderMarkdown(md) {
   if (!md) return '';
-  try {
-    if (typeof marked !== 'undefined') {
-      return marked.parse(md, { breaks: true, gfm: true });
-    }
-  } catch(e) {}
-  // Fallback: basic escaping with <br> for newlines
+  try { if (typeof marked !== 'undefined') return marked.parse(md, { breaks: true, gfm: true }); } catch(e) {}
   return escHtml(md).replace(/\n/g, '<br>');
 }
 
@@ -1290,6 +1414,15 @@ function adminLoadStatus() {
         `<span class="admin-dot ${vok ? 'dot-green' : 'dot-red'}"></span>` +
         (vok ? 'Connected' : 'ERROR: ' + (d.vertex_error || 'unknown'));
 
+      // Update header with company name from env
+      if (d.company) {
+        document.getElementById('headerTitle').innerHTML =
+          d.company.replace(/(.+)/, '$1').replace(/\s+(construction|realty|group|llc|inc)$/i,
+            ' <span>$1</span>') || d.company;
+        document.getElementById('headerSub').textContent =
+          'DOCUMENT INTELLIGENCE';
+        document.title = d.company + ' — Bob';
+      }
       document.getElementById('adm-project').textContent   = d.project_id    || '—';
       document.getElementById('adm-engine').textContent    = d.engine_id     || '—';
       document.getElementById('adm-datastore').textContent = d.data_store_id || '—';
