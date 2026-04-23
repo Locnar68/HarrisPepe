@@ -39,7 +39,7 @@ ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
 MAX_RESULTS  = 12
-MAX_SEGMENTS = 20
+MAX_SEGMENTS = 10
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
 
@@ -265,29 +265,39 @@ class JobIntelligence:
             query=search_query,
             page_size=MAX_RESULTS,
             content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                extractive_content_spec=(
-                    discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-                        max_extractive_answer_count=3,
-                        max_extractive_segment_count=MAX_SEGMENTS,
-                    )
-                )
-                # NOTE: skip snippet_spec — proto marshaling bug with 'list' WhichOneof
+                snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                    return_snippet=True,
+                ),
+                summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+                    summary_result_count=10,
+                    include_citations=True,
+                    ignore_adversarial_query=True,
+                    ignore_non_summary_seeking_query=False,
+                ),
             ),
         )
 
         try:
             response = self._search_client.search(request)
+            results  = list(response)   # materialize pager BEFORE reading summary
         except Exception as e:
             print(f"[Vertex] Search error: {e}")
-            return []
+            return [], []
 
-        excerpts     = []
-        media_links  = []
+        excerpts    = []
+        media_links = []
 
-        for result in response.results:
+        # Vertex summary text (high quality, use as primary excerpt)
+        summary_text = ""
+        try:
+            if hasattr(response, "summary") and response.summary:
+                summary_text = response.summary.summary_text or ""
+        except Exception:
+            pass
+
+        for result in results:
             doc = result.document
 
-            # Read struct_data safely
             struct = {}
             try:
                 if doc.struct_data:
@@ -298,73 +308,64 @@ class JobIntelligence:
             source_uri   = struct.get("source_uri", "")
             doc_type     = struct.get("document_type", "")
             onedrive_url = struct.get("onedrive_url", "")
+            title        = struct.get("title", "") or doc.id or "Document"
 
-            # ── Pointer docs: extract media links, skip content extraction ──
+            # ── Pointer docs ──────────────────────────────────────────────
             if doc_type == "photo_index":
-                prop_name   = struct.get("property", struct.get("title", "Property"))
+                prop_name   = struct.get("property", title)
                 photo_count = struct.get("photo_count", 0)
                 if onedrive_url:
                     media_links.append({
-                        "type":     "photos",
-                        "property": prop_name,
-                        "count":    photo_count,
-                        "url":      onedrive_url,
+                        "type": "photos", "property": prop_name,
+                        "count": photo_count, "url": onedrive_url,
                     })
-                # Also inject a brief content note so Gemini knows about photos
                 excerpts.append({
-                    "source":  f"{prop_name} (photo index)",
-                    "content": f"{photo_count} photos available for {prop_name} in OneDrive.",
+                    "source":  f"{prop_name} (photos)",
+                    "content": f"{photo_count} photos for {prop_name} in OneDrive.",
                 })
                 continue
 
             if doc_type == "large_pdf_pointer":
-                title   = struct.get("title", "Document")
                 size_mb = struct.get("size_mb", 0)
                 gcs_uri = struct.get("gcs_uri", "")
                 media_links.append({
-                    "type":    "document",
-                    "title":   title,
-                    "size_mb": size_mb,
-                    "url":     gcs_uri,
+                    "type": "document", "title": title,
+                    "size_mb": size_mb, "url": gcs_uri,
                 })
                 excerpts.append({
                     "source":  title,
-                    "content": struct.get("summary", f"Large PDF: {title} ({size_mb:.1f} MB)"),
+                    "content": struct.get("summary", f"{title} ({size_mb:.1f} MB PDF)"),
                 })
                 continue
 
-            # ── Regular docs: extract content ──────────────────────────────
-            content = ""
+            # ── Regular docs: use snippet ─────────────────────────────────
+            snippet = ""
             try:
                 if doc.derived_struct_data:
                     dsd = dict(doc.derived_struct_data)
-                    answers = dsd.get("extractive_answers", [])
-                    if isinstance(answers, list):
-                        for ans in answers:
-                            if isinstance(ans, dict):
-                                content += ans.get("content", "") + "\n"
-                    if not content:
-                        segs = dsd.get("extractive_segments", [])
-                        if isinstance(segs, list):
-                            for seg in segs:
-                                if isinstance(seg, dict):
-                                    content += seg.get("content", "") + "\n"
+                    snips = dsd.get("snippets", [])
+                    if isinstance(snips, list):
+                        for s in snips:
+                            if isinstance(s, dict) and s.get("snippet"):
+                                snippet += s["snippet"] + "\n"
             except Exception:
                 pass
 
-            if content.strip():
-                source_label = (
-                    Path(source_uri).name if source_uri
-                    else (doc.id or "Unknown source")
-                )
-                excerpts.append({
-                    "source":  source_label,
-                    "content": content.strip(),
-                })
+            source_label = Path(source_uri).name if source_uri else title
+            excerpts.append({
+                "source":  source_label,
+                "content": snippet.strip() or f"Document: {source_label}",
+            })
 
-        # Deduplicate media links by URL
-        seen_urls = set()
-        unique_media = []
+        # Prepend Vertex summary as top excerpt
+        if summary_text:
+            excerpts.insert(0, {
+                "source":  "Vertex AI Summary",
+                "content": summary_text,
+            })
+
+        # Deduplicate media links
+        seen_urls, unique_media = set(), []
         for m in media_links:
             if m.get("url") and m["url"] not in seen_urls:
                 seen_urls.add(m["url"])
