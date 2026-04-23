@@ -163,6 +163,9 @@ def download_file(token, item):
     return r.content, token
 
 def upload_to_gcs(data, filename, item, dry_run):
+    # Photos are tracked via pointer docs only -- skip GCS upload entirely
+    if any(filename.lower().endswith(ext) for ext in _PHOTO_EXTS):
+        return None
     # Preserve OneDrive path structure using parentReference
     parent_path = item.get("parentReference", {}).get("path", "").split("root:")[-1].strip("/")
     gcs_path = f"onedrive-mirror/{parent_path}/{filename}" if parent_path else f"onedrive-mirror/{filename}"
@@ -189,6 +192,17 @@ _MIME_MAP = {
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
+# Photo extensions -- skipped from GCS upload; pointer docs created instead
+_PHOTO_EXTS = ('.jpg', '.jpeg', '.png', '.heic', '.heif', '.tiff', '.tif', '.webp')
+
+# PDFs larger than this become pointer-only docs in the manifest (no content extraction)
+_LARGE_PDF_BYTES = 8 * 1024 * 1024   # 8 MB
+
+# Module-level state: set by run_sync, consumed by trigger_vertex_import
+_last_token    = ""
+_last_drive_id = ""
+_last_items: list = []
+
 
 def _make_doc_id(blob_name: str) -> str:
     """Sanitize a GCS blob path into a valid Vertex document ID.
@@ -200,53 +214,140 @@ def _make_doc_id(blob_name: str) -> str:
     return clean[:128]
 
 
-def _build_and_upload_manifest(dry_run: bool) -> str | None:
-    """Scan GCS bucket for searchable documents, build a JSONL manifest,
-    upload it, and return the GCS URI of the manifest.
-    Skips images and other non-indexable file types.
+def _get_onedrive_folder_url(token: str, drive_id: str, folder_path: str) -> str:
+    """Get the webUrl for a OneDrive folder path. Returns empty string on failure."""
+    try:
+        url = f"{GRAPH_API}/drives/{drive_id}/root:/{folder_path}"
+        r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+        if r.ok:
+            return r.json().get("webUrl", "")
+    except Exception:
+        pass
+    return ""
+
+
+def _build_photo_pointer_docs(token: str, drive_id: str, folder_path: str, items: list) -> list:
+    """
+    Group photo items by property folder and build one Vertex pointer doc per property.
+    Each pointer doc contains the photo count and a direct OneDrive URL so Bob
+    can navigate straight to the photos from a chat answer.
+    """
+    from collections import defaultdict
+    property_photos: dict = defaultdict(list)
+
+    for item in items:
+        name = item.get("name", "")
+        if not any(name.lower().endswith(ext) for ext in _PHOTO_EXTS):
+            continue
+        parent_path = item.get("parentReference", {}).get("path", "").split("root:")[-1].strip("/")
+        parts = [p for p in parent_path.split("/") if p]
+        # parts: ['Doorloop', '9 Andover Drive', 'photos']
+        if len(parts) >= 2:
+            prop_key = f"{parts[1]}/{parts[2]}" if len(parts) > 2 else parts[1]
+        else:
+            prop_key = parent_path or "Unknown"
+        property_photos[prop_key].append(item)
+
+    pointer_docs = []
+    for prop_key, photo_items in sorted(property_photos.items()):
+        parts       = prop_key.split("/")
+        prop_name   = parts[0]
+        sub_folder  = parts[1] if len(parts) > 1 else "photos"
+        photo_count = len(photo_items)
+
+        od_folder_path = f"{folder_path}/{prop_name}/{sub_folder}"
+        od_url = _get_onedrive_folder_url(token, drive_id, od_folder_path)
+
+        doc_id    = _make_doc_id(f"photo_pointer_{prop_key}")
+        json_data = {
+            "title":          f"{prop_name} — Photos ({photo_count} images)",
+            "property":       prop_name,
+            "document_type":  "photo_index",
+            "photo_count":    photo_count,
+            "onedrive_url":   od_url,
+            "summary": (
+                f"There are {photo_count} photos for {prop_name} stored in OneDrive. "
+                f"Click here to view them: {od_url}"
+            ),
+        }
+        pointer_docs.append({"id": doc_id, "jsonData": json.dumps(json_data)})
+        log.info(f"  Photo pointer: {prop_name} ({photo_count} photos)")
+
+    return pointer_docs
+
+
+def _build_and_upload_manifest(dry_run: bool, token: str = "", drive_id: str = "", items: list = None) -> str | None:
+    """
+    Build a Vertex import manifest with three document types:
+      1. Regular docs (PDF/DOCX/XLSX etc) -- full content extraction
+      2. Large PDF pointers (>8MB) -- metadata + GCS link only
+      3. Photo pointer docs -- one per property with OneDrive URL
     """
     if dry_run:
         log.info("  [dry-run] Would build and upload Vertex import manifest")
         return None
 
     import google.auth
-    creds, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     gcs_client = storage.Client(project=GCP_PROJECT_ID, credentials=creds)
-    bucket = gcs_client.bucket(GCS_BUCKET_NAME)
+    bucket     = gcs_client.bucket(GCS_BUCKET_NAME)
 
-    lines = []
-    seen_ids: set[str] = set()
-    count = 0
+    lines: list[str] = []
+    seen_ids: set    = set()
+    count_docs = count_large = 0
 
     for blob in bucket.list_blobs(prefix="onedrive-mirror/"):
         name_lower = blob.name.lower()
         ext = next((e for e in _SEARCHABLE_EXTS if name_lower.endswith(e)), None)
         if not ext:
             continue
-        uri = f"gs://{GCS_BUCKET_NAME}/{blob.name}"
+        uri    = f"gs://{GCS_BUCKET_NAME}/{blob.name}"
+        title  = blob.name.split("/")[-1]
         doc_id = _make_doc_id(blob.name)
         if doc_id in seen_ids:
             doc_id = f"{doc_id[:120]}_{len(seen_ids)}"
         seen_ids.add(doc_id)
-        lines.append(json.dumps({
-            "id": doc_id,
-            "jsonData": json.dumps({
-                "title": blob.name.split("/")[-1],
-                "source_uri": uri,
-            }),
-            "content": {
-                "mimeType": _MIME_MAP.get(ext, "application/pdf"),
-                "uri": uri,
-            },
-        }))
-        count += 1
+
+        # Large PDFs: pointer doc only (no content extraction)
+        if ext == ".pdf" and blob.size and blob.size > _LARGE_PDF_BYTES:
+            size_mb = blob.size / (1024 * 1024)
+            lines.append(json.dumps({
+                "id": doc_id,
+                "jsonData": json.dumps({
+                    "title":         title,
+                    "document_type": "large_pdf_pointer",
+                    "size_mb":       round(size_mb, 1),
+                    "gcs_uri":       uri,
+                    "summary":       f"{title} is a {size_mb:.1f} MB PDF. GCS path: {uri}",
+                }),
+            }))
+            count_large += 1
+        else:
+            lines.append(json.dumps({
+                "id":       doc_id,
+                "jsonData": json.dumps({"title": title, "source_uri": uri}),
+                "content":  {"mimeType": _MIME_MAP.get(ext, "application/pdf"), "uri": uri},
+            }))
+            count_docs += 1
+
+    # Photo pointer docs (one per property, with OneDrive URL)
+    if token and drive_id and items:
+        photo_pointers = _build_photo_pointer_docs(token, drive_id, ONEDRIVE_FOLDER_PATH, items)
+        for p in photo_pointers:
+            if p["id"] not in seen_ids:
+                seen_ids.add(p["id"])
+                lines.append(json.dumps(p))
+        count_photos = len(photo_pointers)
+    else:
+        count_photos = 0
 
     manifest_path = "manifests/import_manifest_latest.jsonl"
     bucket.blob(manifest_path).upload_from_string("\n".join(lines))
-    manifest_uri = f"gs://{GCS_BUCKET_NAME}/{manifest_path}"
-    log.info(f"Manifest built: {count} searchable documents -> {manifest_uri}")
+    manifest_uri  = f"gs://{GCS_BUCKET_NAME}/{manifest_path}"
+    log.info(
+        f"Manifest: {count_docs} docs + {count_large} large-PDF pointers "
+        f"+ {count_photos} photo pointers -> {manifest_uri}"
+    )
     return manifest_uri
 
 
@@ -255,7 +356,7 @@ def trigger_vertex_import(dry_run):
         log.warning("VERTEX_DATASTORE_ID or GCP_PROJECT_ID not set -- skipping Vertex import")
         return
 
-    manifest_uri = _build_and_upload_manifest(dry_run)
+    manifest_uri = _build_and_upload_manifest(dry_run, token=_last_token, drive_id=_last_drive_id, items=_last_items)
     if dry_run:
         return
 
@@ -284,31 +385,50 @@ def trigger_vertex_import(dry_run):
         log.error(f"Vertex import failed: {r.status_code} {r.text}")
 
 def run_sync(dry_run=False, force=False):
+    global _last_token, _last_drive_id, _last_items
+
     log.info("=" * 50)
     log.info(f"OneDrive sync started -- dry_run={dry_run}, force={force}")
     log.info("=" * 50)
+
     ms_token = _get_ms_token()
+    _last_token = ms_token
+
+    try:
+        _last_drive_id = _get_drive_id(ms_token)
+    except Exception:
+        _last_drive_id = ""
+
     files = list_onedrive_files(ms_token, force=force)
+    _last_items = files
+
     if not files:
         log.info("No files to sync.")
         return
+
+    photos = [f for f in files if any(f["name"].lower().endswith(e) for e in _PHOTO_EXTS)]
+    docs   = [f for f in files if not any(f["name"].lower().endswith(e) for e in _PHOTO_EXTS)]
+    log.info(f"Plan: {len(docs)} documents to upload + {len(photos)} photos (skipped -- pointer docs only)")
+
     uploaded = errors = 0
-    for item in files:
-        name = item["name"]
+    for item in docs:
+        name    = item["name"]
         size_kb = item.get("size", 0) // 1024
         log.info(f"Syncing: {name}  ({size_kb} KB)")
         try:
             if not dry_run:
                 data, ms_token = download_file(ms_token, item)
+                _last_token = ms_token
                 upload_to_gcs(data, name, item, dry_run=False)
             else:
-                upload_to_gcs(b"", name, item, dry_run=True)
+                log.info(f"  [dry-run] Would upload -> {name}")
             uploaded += 1
         except Exception as e:
             log.error(f"  Failed: {name} -- {e}")
             errors += 1
-    log.info(f"Sync complete: {uploaded} uploaded, {errors} errors")
-    if uploaded > 0:
+
+    log.info(f"Sync complete: {uploaded} docs uploaded, {len(photos)} photos skipped, {errors} errors")
+    if uploaded > 0 or dry_run:
         trigger_vertex_import(dry_run=dry_run)
     log.info("=" * 50)
 
