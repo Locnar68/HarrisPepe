@@ -93,12 +93,16 @@ def chat():
 
         # Resolve the active session_id (may have been created during the call)
         if not session_id:
-            # Find the most recently active session (rough heuristic for single-user dev)
             sessions = intel._sessions
             if sessions:
                 latest = max(sessions.values(), key=lambda s: s.last_active)
                 session_id = latest.session_id
         result["session_id"] = session_id
+
+        # Ensure media_links is always present (empty list for older responses)
+        result.setdefault("media_links", [])
+        # source_uris: {filename: gs://... uri} for download chips
+        result.setdefault("source_uris", result.pop("_source_uris", {}))
 
         return jsonify(result)
     except Exception as e:

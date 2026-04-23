@@ -6,6 +6,7 @@
 <title>Property Intelligence — Job Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -370,10 +371,46 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: default;
-  transition: color 0.12s, border-color 0.12s;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  text-decoration: none;
 }
-.source-chip:hover { color: var(--amber); border-color: rgba(245,166,35,.3); }
+.source-chip:hover { color: var(--amber); border-color: rgba(245,166,35,.3); background: var(--amber-glow); }
+
+/* ── Media tray (photo + large PDF cards) ──────────────────────────────── */
+.media-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.media-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-decoration: none;
+  max-width: 280px;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+.media-card:hover { opacity: 0.8; }
+.media-card-photo {
+  background: var(--amber-dim);
+  border: 1px solid rgba(245,166,35,.35);
+  color: var(--amber);
+}
+.media-card-pdf {
+  background: var(--green-dim);
+  border: 1px solid rgba(74,222,128,.3);
+  color: var(--green);
+}
+.media-card-icon { font-size: 14px; flex-shrink: 0; }
+.media-card-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Suggested follow-ups */
 .followups-row {
@@ -1013,13 +1050,43 @@ function appendAiMessage(data) {
   }[conf] || conf;
 
   // Sources
+  // sources is array of strings (filenames); build download chips
   const sourcesHtml = (data.sources || []).length
     ? `<div class="sources-row">
-        ${data.sources.map(s => `<span class="source-chip" title="${escHtml(s)}">${escHtml(s)}</span>`).join('')}
+        ${data.sources.map(s => {
+          const uri = (data.source_uris || {})[s] || '';
+          const href = uri
+            ? `/api/download?uri=${encodeURIComponent(uri)}`
+            : '#';
+          const target = uri ? ' target="_blank"' : '';
+          return `<a class="source-chip" href="${href}"${target} title="Download ${escHtml(s)}" download>📄 ${escHtml(s)}</a>`;
+        }).join('')}
        </div>`
     : '';
 
   // Follow-ups
+  // Media cards: photo folders (amber) and large PDF pointers (green)
+  const mediaTrayHtml = (data.media_links || []).length
+    ? `<div class="media-tray">
+        ${data.media_links.map(m => {
+          const isPhoto = m.type === 'photo';
+          const cls   = isPhoto ? 'media-card-photo' : 'media-card-pdf';
+          const icon  = isPhoto ? '📷' : '📋';
+          const label = isPhoto
+            ? `${m.title}${m.count ? ' (' + m.count + ')' : ''}`
+            : m.title;
+          const href  = isPhoto
+            ? m.url
+            : (m.url.startsWith('gs://') ? '/api/download?uri=' + encodeURIComponent(m.url) : m.url);
+          const target = isPhoto ? ' target="_blank"' : '';
+          return `<a class="media-card ${cls}" href="${href}"${target}>
+            <span class="media-card-icon">${icon}</span>
+            <span class="media-card-label">${escHtml(label)}</span>
+          </a>`;
+        }).join('')}
+       </div>`
+    : '';
+
   const followupsHtml = (data.suggested_followups || []).length
     ? `<div class="followups-row">
         ${data.suggested_followups.map(f =>
@@ -1033,7 +1100,7 @@ function appendAiMessage(data) {
   div.innerHTML = `
     <div class="msg-avatar">MAC</div>
     <div class="msg-body">
-      <div class="msg-bubble">${escHtml(data.answer)}</div>
+      <div class="msg-bubble md-body">${renderMarkdown(data.answer)}</div>
       <div class="confidence-row">
         <span class="confidence-badge ${confClass}">${confLabel}</span>
         ${data.search_results > 0
@@ -1041,6 +1108,7 @@ function appendAiMessage(data) {
           : ''}
       </div>
       ${sourcesHtml}
+      ${mediaTrayHtml}
       ${followupsHtml}
     </div>`;
   msgs.appendChild(div);
@@ -1131,6 +1199,18 @@ function autoResize(el) {
 function scrollBottom() {
   const msgs = document.getElementById('messages');
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+// renderMarkdown: safe markdown → HTML (uses marked.js if available)
+function renderMarkdown(md) {
+  if (!md) return '';
+  try {
+    if (typeof marked !== 'undefined') {
+      return marked.parse(md, { breaks: true, gfm: true });
+    }
+  } catch(e) {}
+  // Fallback: basic escaping with <br> for newlines
+  return escHtml(md).replace(/\n/g, '<br>');
 }
 
 function escHtml(s) {

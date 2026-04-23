@@ -213,6 +213,72 @@ def friendly_empty_message(query: str) -> str:
     )
 
 
+
+# ── /api/download  (GCS file proxy) ─────────────────────────────────────────
+
+@app.route("/api/download")
+def api_download():
+    """
+    Stream a file from GCS to the browser as a download.
+    Query param: ?uri=gs://bucket/path/to/file.pdf
+    Uses the service account already loaded by the app.
+    """
+    from flask import Response, stream_with_context
+    import urllib.parse
+
+    raw_uri = flask_request.args.get("uri", "").strip()
+    if not raw_uri:
+        return jsonify({"error": "uri param required"}), 400
+
+    # Only allow gs:// URIs (no SSRF via http:// etc.)
+    if not raw_uri.startswith("gs://"):
+        return jsonify({"error": "Only gs:// URIs are supported"}), 400
+
+    try:
+        from google.cloud import storage as gcs_storage
+        from google.oauth2 import service_account as gsa
+
+        creds = None
+        if SA_KEY_PATH.exists():
+            creds = gsa.Credentials.from_service_account_file(
+                str(SA_KEY_PATH),
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+
+        # Parse  gs://bucket/blob/path
+        without_scheme = raw_uri[5:]          # strip "gs://"
+        bucket_name, _, blob_path = without_scheme.partition("/")
+        gcs_client  = gcs_storage.Client(credentials=creds)
+        bucket      = gcs_client.bucket(bucket_name)
+        blob        = bucket.blob(blob_path)
+
+        filename = urllib.parse.quote(blob_path.split("/")[-1])
+        content_type = "application/octet-stream"
+        name_lower   = filename.lower()
+        if name_lower.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif name_lower.endswith(".docx"):
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif name_lower.endswith(".xlsx"):
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+        def generate():
+            with blob.open("rb") as fh:
+                while True:
+                    chunk = fh.read(256 * 1024)  # 256 KB chunks
+                    if not chunk:
+                        break
+                    yield chunk
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type":        content_type,
+        }
+        return Response(stream_with_context(generate()), headers=headers, status=200)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/query", methods=["POST"])
 def api_query():
     data  = flask_request.get_json(silent=True) or {}

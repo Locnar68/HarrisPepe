@@ -39,7 +39,7 @@ ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
 MAX_RESULTS  = 12
-MAX_SEGMENTS = 10
+MAX_SEGMENTS = 20
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
 
@@ -59,32 +59,48 @@ SA_KEY = _resolve_sa_key()
 
 
 # ── System prompt  ────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are the Madison Ave Construction Intelligence Assistant.
-Your job is to help Bob — the company owner — get direct, accurate answers about 
-his restoration and renovation jobs, insurance claims, invoices, permits, and clients.
+SYSTEM_PROMPT = """You are a real estate investment intelligence assistant.
+Your job is to help the portfolio owner get direct, accurate answers about
+their properties, deals, financials, legal documents, and investment performance.
 
 RULES:
-1. Answer using ONLY the document excerpts provided. Never invent addresses, dollar 
-   amounts, dates, permit numbers, or insurer names.
-2. For financial figures: state the number, which document it came from, and note if 
-   the source could be partial (e.g., one invoice ≠ total job cost).
-3. For status questions: structure your answer as:
-   • Current Stage → Key Dates → Open Items → Money Summary
-4. If the documents don't clearly answer the question, say exactly what you DID find
-   and what is missing. Bob can then pull the right document.
-5. Use conversation history to understand "that job," "the Brooklyn property," or 
-   "that claim" without Bob having to repeat himself.
-6. Be direct. Bob is an owner, not a first-time user. No preambles like "Great question!"
-7. If you detect conflicting data across documents, flag it: "Note: Doc A says X, Doc B says Y."
-8. Keep answers under 300 words unless a detailed breakdown is requested.
+1. Answer using ONLY the document excerpts provided. Never invent addresses,
+   dollar amounts, dates, entity names, or lender details.
+2. For financial figures: state the number, cite the source document, and note
+   if the figure may be partial (e.g., one invoice does not equal total project cost).
+3. For property questions, structure answers as:
+   • Property → Appraisal / Purchase Price → Key Dates → Financial Summary → Open Items
+4. If documents don't clearly answer the question, say exactly what you DID find
+   and what is missing. The owner can then pull the right document.
+5. Use conversation history to track which property is "in focus" so the owner
+   does not have to repeat the address on every follow-up.
+6. Be direct and concise. No preambles like "Great question!" or "Certainly!"
+7. If you detect conflicting figures across documents, flag it explicitly:
+   "Note: Doc A shows X, Doc B shows Y — verify which is current."
+8. When a photo pointer doc appears in results, mention the OneDrive link naturally:
+   e.g. "157 photos are available for this property — see the link below."
+9. Keep answers under 300 words unless a detailed breakdown is explicitly requested.
+10. For portfolio-wide questions, summarize what the indexed documents show and
+    note that totals may be incomplete if not all docs are indexed.
 
 DOMAIN CONTEXT:
-Madison Ave Construction does 24/7 emergency restoration (water, fire, storm, mold) 
-on Long Island and NYC. Key document types: permits, insurance claim letters, 
-Xactimate estimates, invoices, P&L statements, inspection reports, property inventories, 
-appraisals, contractor notices, and closing docs. Job folders follow: 00-Intake, 
-01-Photos, 02-Mitigation, 03-Estimate, 04-Insurance, 05-Permits, 06-Invoices, 
-07-Customer-Comms, 08-Completion."""
+This is a real estate investment portfolio operating on Long Island, NY.
+Properties are acquired, renovated, and sold or held for income.
+Key document types indexed:
+  - Appraisals (market value, comparables, appraiser name)
+  - Closing packages (purchase/sale contracts, HUD statements, deed, title)
+  - Title reports (liens, encumbrances, ownership chain)
+  - P&L statements and monthly financial summaries
+  - Scope of work (SOW) documents
+  - Permits and certificates of occupancy
+  - Inspection reports (building, electrical, mold, asbestos)
+  - Flood and property disclosures
+  - Loan approval letters and lender correspondence
+  - Invoices from contractors and vendors
+  - Insurance policies and flood zone documents
+  - Entity formation docs (LLC operating agreements, EIN letters)
+Property folders follow: /files/ (documents) and /photos/ (field photos in OneDrive).
+LLC entities include: Bobbomatic LLC, Flip It LLC, Shearwater Way LLC, Lama Drive LLC."""
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -112,10 +128,8 @@ class IntelligenceResponse:
     confidence:      str          # "high" | "medium" | "low" | "none"
     job_context:     Optional[str]
     suggested_followups: list[str]
-    media_links:     list[dict] = field(default_factory=list)
-    # media_links entries:
-    #   photo pointer: {type:"photos", property:str, count:int, url:str}
-    #   large pdf:     {type:"document", title:str, size_mb:float, url:str}
+    media_links:     list[dict] = field(default_factory=list)  # photo pointers + large PDFs
+    source_uris:     dict       = field(default_factory=dict)   # {filename: gs://uri} for download
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -250,12 +264,14 @@ class JobIntelligence:
             del self._sessions[sid]
 
     # ── Vertex retrieval ───────────────────────────────────────────────────
-    def retrieve(self, query: str, job_context: Optional[str] = None) -> list[dict]:
+    def retrieve(self, query: str, job_context: Optional[str] = None) -> tuple:
         """
-        Query Vertex AI Search and return a list of excerpt dicts:
-        {"source": str, "content": str}
+        Query Vertex AI Search.
+        Returns: (excerpts, media_links)
+          excerpts    — list of {"source": str, "source_uri": str, "content": str}
+          media_links — list of {"type": "photo"|"large_pdf", "title": str,
+                                  "url": str, "count": int}
         """
-        # If we have a job context, prepend it to sharpen retrieval
         search_query = query
         if job_context:
             search_query = f"{job_context} {query}"
@@ -265,21 +281,17 @@ class JobIntelligence:
             query=search_query,
             page_size=MAX_RESULTS,
             content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                    return_snippet=True,
-                ),
-                summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-                    summary_result_count=10,
-                    include_citations=True,
-                    ignore_adversarial_query=True,
-                    ignore_non_summary_seeking_query=False,
-                ),
+                extractive_content_spec=(
+                    discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                        max_extractive_answer_count=3,
+                        max_extractive_segment_count=MAX_SEGMENTS,
+                    )
+                )
             ),
         )
 
         try:
             response = self._search_client.search(request)
-            results  = list(response)   # materialize pager BEFORE reading summary
         except Exception as e:
             print(f"[Vertex] Search error: {e}")
             return [], []
@@ -287,17 +299,10 @@ class JobIntelligence:
         excerpts    = []
         media_links = []
 
-        # Vertex summary text (high quality, use as primary excerpt)
-        summary_text = ""
-        try:
-            if hasattr(response, "summary") and response.summary:
-                summary_text = response.summary.summary_text or ""
-        except Exception:
-            pass
-
-        for result in results:
+        for result in response.results:
             doc = result.document
 
+            # Read all struct_data fields safely
             struct = {}
             try:
                 if doc.struct_data:
@@ -308,70 +313,58 @@ class JobIntelligence:
             source_uri   = struct.get("source_uri", "")
             doc_type     = struct.get("document_type", "")
             onedrive_url = struct.get("onedrive_url", "")
-            title        = struct.get("title", "") or doc.id or "Document"
+            photo_count  = struct.get("photo_count", 0)
+            title        = struct.get("title", doc.id or "Unknown")
 
-            # ── Pointer docs ──────────────────────────────────────────────
-            if doc_type == "photo_index":
-                prop_name   = struct.get("property", title)
-                photo_count = struct.get("photo_count", 0)
-                if onedrive_url:
-                    media_links.append({
-                        "type": "photos", "property": prop_name,
-                        "count": photo_count, "url": onedrive_url,
-                    })
-                excerpts.append({
-                    "source":  f"{prop_name} (photos)",
-                    "content": f"{photo_count} photos for {prop_name} in OneDrive.",
-                })
-                continue
-
-            if doc_type == "large_pdf_pointer":
-                size_mb = struct.get("size_mb", 0)
-                gcs_uri = struct.get("gcs_uri", "")
+            # Photo pointer docs → media_links, skip from excerpts
+            if doc_type == "photo_index" and onedrive_url:
                 media_links.append({
-                    "type": "document", "title": title,
-                    "size_mb": size_mb, "url": gcs_uri,
-                })
-                excerpts.append({
-                    "source":  title,
-                    "content": struct.get("summary", f"{title} ({size_mb:.1f} MB PDF)"),
+                    "type":  "photo",
+                    "title": title,
+                    "url":   onedrive_url,
+                    "count": int(photo_count) if photo_count else 0,
                 })
                 continue
 
-            # ── Regular docs: use snippet ─────────────────────────────────
-            snippet = ""
+            # Large PDF pointers → media_links
+            if doc_type == "large_pdf_pointer":
+                gcs_uri = struct.get("gcs_uri", source_uri)
+                media_links.append({
+                    "type":  "large_pdf",
+                    "title": title,
+                    "url":   gcs_uri,
+                    "count": 0,
+                })
+                continue
+
+            # Regular docs: extract content
+            content = ""
             try:
                 if doc.derived_struct_data:
                     dsd = dict(doc.derived_struct_data)
-                    snips = dsd.get("snippets", [])
-                    if isinstance(snips, list):
-                        for s in snips:
-                            if isinstance(s, dict) and s.get("snippet"):
-                                snippet += s["snippet"] + "\n"
+                    answers = dsd.get("extractive_answers", [])
+                    if isinstance(answers, list):
+                        for ans in answers:
+                            if isinstance(ans, dict):
+                                content += ans.get("content", "") + "\n"
+                    if not content:
+                        segs = dsd.get("extractive_segments", [])
+                        if isinstance(segs, list):
+                            for seg in segs:
+                                if isinstance(seg, dict):
+                                    content += seg.get("content", "") + "\n"
             except Exception:
                 pass
 
-            source_label = Path(source_uri).name if source_uri else title
-            excerpts.append({
-                "source":  source_label,
-                "content": snippet.strip() or f"Document: {source_label}",
-            })
+            if content.strip():
+                source_label = Path(source_uri).name if source_uri else title
+                excerpts.append({
+                    "source":     source_label,
+                    "source_uri": source_uri,
+                    "content":    content.strip(),
+                })
 
-        # Prepend Vertex summary as top excerpt
-        if summary_text:
-            excerpts.insert(0, {
-                "source":  "Vertex AI Summary",
-                "content": summary_text,
-            })
-
-        # Deduplicate media links
-        seen_urls, unique_media = set(), []
-        for m in media_links:
-            if m.get("url") and m["url"] not in seen_urls:
-                seen_urls.add(m["url"])
-                unique_media.append(m)
-
-        return excerpts, unique_media
+        return excerpts, media_links
 
     # ── Gemini synthesis ───────────────────────────────────────────────────
     def synthesize(
@@ -467,7 +460,8 @@ class JobIntelligence:
         )
         confidence = _score_confidence(len(excerpts), has_direct)
         followups  = _suggest_followups(query, session.job_context)
-        sources    = list({exc["source"] for exc in excerpts})
+        sources     = list({exc["source"] for exc in excerpts})
+        source_uris = {exc["source"]: exc.get("source_uri", "") for exc in excerpts}
 
         return IntelligenceResponse(
             answer=answer,
@@ -477,6 +471,7 @@ class JobIntelligence:
             job_context=session.job_context,
             suggested_followups=followups,
             media_links=media_links,
+            source_uris=source_uris,
         )
 
     def clear_session(self, session_id: str):
