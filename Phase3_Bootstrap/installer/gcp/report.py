@@ -136,6 +136,13 @@ def _write_env(cfg: Phase3Config, install_path: Path) -> None:
         f'GCS_BUCKET_NAME="{cfg.storage.raw_bucket}"',
         f'VERTEX_DATASTORE_ID="{cfg.vertex.data_store_id}"',
         f'VERTEX_LOCATION="{cfg.gcp.location}"',
+        "",
+        "# ── Phase 6: OCR (optional) ───────────────────────────────────────",
+        "# To enable Document AI OCR for scanned PDFs:",
+        "# 1. Enable Document AI API in GCP console",
+        "# 2. Create OCR processor: gcloud ai document-processors create --type=OCR_PROCESSOR --location=us",
+        "# 3. Paste the processor ID below (~$1.50 per 1,000 pages)",
+        'DOCAI_PROCESSOR_ID=""',
     ]
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -402,6 +402,28 @@ def _build_and_upload_manifest(dry_run: bool, token: str = "", drive_id: str = "
     manifest_path = "manifests/import_manifest_latest.jsonl"
     bucket.blob(manifest_path).upload_from_string("\n".join(lines))
     manifest_uri  = f"gs://{GCS_BUCKET_NAME}/{manifest_path}"
+
+    # Write photo_index.json — flat lookup for Bob to read directly from GCS.
+    # Keyed by property name, value has OneDrive URL + photo count.
+    # This avoids Vertex search quota for photo lookups entirely.
+    if photo_pointers:
+        photo_index = {}
+        for p in photo_pointers:
+            try:
+                data = json.loads(p.get("jsonData", "{}"))
+                prop = data.get("property", "")
+                url  = data.get("onedrive_url", "")
+                cnt  = data.get("photo_count", 0)
+                if prop and url:
+                    photo_index[prop] = {"url": url, "count": cnt, "title": data.get("title", "")}
+            except Exception:
+                pass
+        if photo_index:
+            bucket.blob("manifests/photo_index.json").upload_from_string(
+                json.dumps(photo_index, indent=2))
+            log.info(f"  Photo index written: {len(photo_index)} properties -> "
+                     f"gs://{GCS_BUCKET_NAME}/manifests/photo_index.json")
+
     log.info(
         f"Manifest: {count_docs} docs + {count_large} large-PDF pointers "
         f"+ {count_photos} photo pointers -> {manifest_uri}"

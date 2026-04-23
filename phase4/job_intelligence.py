@@ -28,7 +28,6 @@ import google.generativeai as genai
 from google.cloud import discoveryengine_v1 as discoveryengine
 from google.oauth2 import service_account
 from google.api_core.client_options import ClientOptions
-from google.protobuf.json_format import MessageToDict
 
 # ── Config — all values read from environment / .env ─────────────────────────
 # The bootstrap writes these into Phase3_Bootstrap/secrets/.env automatically.
@@ -39,8 +38,8 @@ PROJECT_ID   = _os.getenv("GCP_PROJECT_ID",       "commanding-way-380716")
 ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
-MAX_RESULTS  = 20
-MAX_SEGMENTS = 10
+MAX_RESULTS  = 12
+MAX_SEGMENTS = 20
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
 
@@ -70,37 +69,25 @@ RULES:
 2. For financial figures: state the number, cite the source document, and note
    if the figure may be partial (e.g., one invoice does not equal total project cost).
 3. For property questions, structure answers as:
-   • Property → Appraisal / Purchase Price → Key Dates → Financial Summary → Open Items
-4. If documents don't clearly answer the question, say exactly what you DID find
+   - Property, Appraisal / Purchase Price, Key Dates, Financial Summary, Open Items
+4. If documents do not clearly answer the question, say exactly what you DID find
    and what is missing. The owner can then pull the right document.
-5. Use conversation history to track which property is "in focus" so the owner
+5. Use conversation history to track which property is in focus so the owner
    does not have to repeat the address on every follow-up.
-6. Be direct and concise. No preambles like "Great question!" or "Certainly!"
-7. If you detect conflicting figures across documents, flag it explicitly:
-   "Note: Doc A shows X, Doc B shows Y — verify which is current."
-8. When a photo pointer doc appears in results, mention the OneDrive link naturally:
-   e.g. "157 photos are available for this property — see the link below."
+6. Be direct and concise. No preambles like Great question or Certainly.
+7. If you detect conflicting figures across documents, flag it explicitly.
+8. When a photo card appears in results for a photo request, always reply:
+   Photos are available for this property - click the photo link below to view them in OneDrive.
+   Note: I cannot display photos directly in this chat.
+   If no photo card is present say: No photos are indexed for this property yet.
 9. Keep answers under 300 words unless a detailed breakdown is explicitly requested.
-10. For portfolio-wide questions, summarize what the indexed documents show and
-    note that totals may be incomplete if not all docs are indexed.
+10. For portfolio-wide questions, summarize what the indexed documents show.
 
 DOMAIN CONTEXT:
-This is a real estate investment portfolio operating on Long Island, NY.
+This is a real estate investment portfolio operating on Long Island NY.
 Properties are acquired, renovated, and sold or held for income.
-Key document types indexed:
-  - Appraisals (market value, comparables, appraiser name)
-  - Closing packages (purchase/sale contracts, HUD statements, deed, title)
-  - Title reports (liens, encumbrances, ownership chain)
-  - P&L statements and monthly financial summaries
-  - Scope of work (SOW) documents
-  - Permits and certificates of occupancy
-  - Inspection reports (building, electrical, mold, asbestos)
-  - Flood and property disclosures
-  - Loan approval letters and lender correspondence
-  - Invoices from contractors and vendors
-  - Insurance policies and flood zone documents
-  - Entity formation docs (LLC operating agreements, EIN letters)
-Property folders follow: /files/ (documents) and /photos/ (field photos in OneDrive).
+Key document types: Appraisals, Closing packages, Title reports, P+L statements,
+Permits, Inspection reports, Flood disclosures, Loan letters, Invoices, Insurance.
 LLC entities include: Bobbomatic LLC, Flip It LLC, Shearwater Way LLC, Lama Drive LLC."""
 
 
@@ -129,8 +116,10 @@ class IntelligenceResponse:
     confidence:      str          # "high" | "medium" | "low" | "none"
     job_context:     Optional[str]
     suggested_followups: list[str]
-    media_links:     list[dict] = field(default_factory=list)  # photo pointers + large PDFs
-    source_uris:     dict       = field(default_factory=dict)   # {filename: gs://uri} for download
+    media_links:     list[dict] = field(default_factory=list)
+    # media_links entries:
+    #   photo pointer: {type:"photos", property:str, count:int, url:str}
+    #   large pdf:     {type:"document", title:str, size_mb:float, url:str}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -145,24 +134,23 @@ def _load_creds():
 
 
 def _extract_job_context(text: str) -> Optional[str]:
-    """
-    Try to detect a job address or ID from a user message.
-    Returns a normalized string like "332 Parkville Ave" if found.
-    """
-    # Look for street-address patterns
-    addr = re.search(
-        r"\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3}"
-        r"(?:\s+(?:Ave|Blvd|St|Rd|Dr|Ln|Way|Ct|Pl|Terr|Ter|Circle|Cir)\.?)?",
+    STOPWORDS = {"tell","show","me","about","the","of","for","on","get",
+                 "find","what","is","are","give","summary","photos","photo",
+                 "docs","documents","please","do","we","have","any"}
+    m = re.search(
+        r"\b(\d{1,5})\s+([A-Za-z][a-zA-Z\.\'']+(?:\s+[A-Za-z][a-zA-Z\.\'']+){0,4})\b",
         text
     )
-    if addr:
-        return addr.group(0).strip()
-
-    # Look for job IDs like JOB-2024-001
+    if m:
+        num = m.group(1)
+        words = m.group(2).split()
+        while words and words[-1].lower() in STOPWORDS:
+            words.pop()
+        if words:
+            return f"{num} " + " ".join(w.title() for w in words)
     job_id = re.search(r"\bJOB[-_]\d{4}[-_]\d{2,4}\b", text, re.IGNORECASE)
     if job_id:
         return job_id.group(0).upper()
-
     return None
 
 
@@ -265,49 +253,60 @@ class JobIntelligence:
             del self._sessions[sid]
 
     # ── Vertex retrieval ───────────────────────────────────────────────────
-    def retrieve(self, query: str, job_context: Optional[str] = None) -> tuple:
+    def retrieve(self, query: str, job_context: Optional[str] = None) -> list[dict]:
         """
-        Query Vertex AI Search.
-        Returns: (excerpts, media_links)
-          excerpts    — list of {"source": str, "source_uri": str, "content": str}
-          media_links — list of {"type": "photo"|"large_pdf", "title": str,
-                                  "url": str, "count": int}
+        Query Vertex AI Search and return a list of excerpt dicts:
+        {"source": str, "content": str}
         """
+        # If we have a job context, prepend it to sharpen retrieval
         search_query = query
         if job_context:
             search_query = f"{job_context} {query}"
 
-        request = discoveryengine.SearchRequest(
-            serving_config=self._serving_config,
-            query=search_query,
-            page_size=MAX_RESULTS,
-            content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                    return_snippet=True,
+        def _make_req(q, flt=""):
+            kw = dict(
+                serving_config=self._serving_config,
+                query=q,
+                page_size=MAX_RESULTS,
+                content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
+                    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(return_snippet=True),
+                    summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+                        summary_result_count=10,
+                        include_citations=True,
+                        ignore_adversarial_query=True,
+                        ignore_non_summary_seeking_query=False,
+                    ),
                 ),
-                summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-                    summary_result_count=10,
-                    include_citations=True,
-                    ignore_adversarial_query=True,
-                    ignore_non_summary_seeking_query=False,
-                ),
-            ),
-        )
+            )
+            if flt:
+                kw["filter"] = flt
+            return discoveryengine.SearchRequest(**kw)
 
+        request = _make_req(search_query, 'NOT document_type: ANY("scanned_document")')
+
+        # Dummy block kept to satisfy old structure
         try:
             response = self._search_client.search(request)
             results  = list(response)
+            if not results:
+                response = self._search_client.search(_make_req(search_query))
+                results = list(response)
         except Exception as e:
-            print("[Vertex] Search error:", e)
-            return [], []
+            print(f"[Vertex] Search error: {e}")
+            try:
+                response = self._search_client.search(_make_req(search_query))
+                results = list(response)
+            except Exception as e2:
+                print(f"[Vertex] Retry error: {e2}")
+                return [], []
 
-        excerpts    = []
-        media_links = []
+        excerpts     = []
+        media_links  = []
 
         for result in results:
             doc = result.document
 
-            # Read all struct_data fields safely
+            # Read struct_data safely
             struct = {}
             try:
                 if doc.struct_data:
@@ -318,181 +317,136 @@ class JobIntelligence:
             source_uri   = struct.get("source_uri", "")
             doc_type     = struct.get("document_type", "")
             onedrive_url = struct.get("onedrive_url", "")
-            photo_count  = struct.get("photo_count", 0)
-            title        = struct.get("title", doc.id or "Unknown")
 
-            # Photo pointer docs → media_links, skip from excerpts
-            if doc_type == "photo_index" and onedrive_url:
-                media_links.append({
-                    "type":  "photo",
-                    "title": title,
-                    "url":   onedrive_url,
-                    "count": int(photo_count) if photo_count else 0,
+            # ── Pointer docs: extract media links, skip content extraction ──
+            if doc_type == "photo_index":
+                prop_name   = struct.get("property", struct.get("title", "Property"))
+                photo_count = struct.get("photo_count", 0)
+                if onedrive_url:
+                    media_links.append({
+                        "type":     "photos",
+                        "property": prop_name,
+                        "count":    photo_count,
+                        "url":      onedrive_url,
+                    })
+                # Also inject a brief content note so Gemini knows about photos
+                excerpts.append({
+                    "source":  f"{prop_name} (photo index)",
+                    "content": f"{photo_count} photos available for {prop_name} in OneDrive.",
                 })
                 continue
 
-            # Large PDF pointers → media_links
             if doc_type == "large_pdf_pointer":
-                gcs_uri = struct.get("gcs_uri", source_uri)
+                title   = struct.get("title", "Document")
+                size_mb = struct.get("size_mb", 0)
+                gcs_uri = struct.get("gcs_uri", "")
                 media_links.append({
-                    "type":  "large_pdf",
-                    "title": title,
-                    "url":   gcs_uri,
-                    "count": 0,
+                    "type":    "document",
+                    "title":   title,
+                    "size_mb": size_mb,
+                    "url":     gcs_uri,
+                })
+                excerpts.append({
+                    "source":  title,
+                    "content": struct.get("summary", f"Large PDF: {title} ({size_mb:.1f} MB)"),
                 })
                 continue
 
-            # Regular docs -- collect source label for citation
-            # Content comes from response.summary.summary_text (read after loop)
-            source_label = Path(source_uri).name if source_uri else title
+            # ── Regular docs: collect as source chip with download URI ─────
+            title = struct.get("title", doc.id or "Unknown")
+            source_label = source_uri.split("/")[-1] if source_uri else title
             if source_label and source_label not in ("Unknown", ""):
                 excerpts.append({
                     "source":     source_label,
                     "source_uri": source_uri,
-                    "content":    "",   # filled in below from Vertex summary
+                    "content":    "",
                 })
 
-        # Read Vertex summary AFTER pager is materialized (critical ordering)
-        # Distribute summary text into the first excerpt so Gemini has context
+        # Deduplicate media links by URL
+        seen_urls = set()
+        unique_media = []
+        for m in media_links:
+            if m.get("url") and m["url"] not in seen_urls:
+                seen_urls.add(m["url"])
+                unique_media.append(m)
+
+        # Read Vertex summary AFTER pager materialised
         try:
             summary_text = ""
             if hasattr(response, "summary") and response.summary:
                 summary_text = response.summary.summary_text or ""
-            if summary_text and excerpts:
-                excerpts[0]["content"] = summary_text
-            elif summary_text:
-                excerpts.append({
-                    "source":     "Vertex Summary",
-                    "source_uri": "",
-                    "content":    summary_text,
-                })
+            if summary_text:
+                if excerpts:
+                    excerpts[0]["content"] = summary_text
+                else:
+                    excerpts.append({"source": "Vertex Summary", "source_uri": "", "content": summary_text})
         except Exception as e:
             print("[Vertex] Summary read error:", e)
 
-        # Drop any excerpts that ended up with no content
-        excerpts = [e for e in excerpts if e["content"].strip()]
-
-        return excerpts, media_links
+        return excerpts, unique_media
 
 
-    # ── Photo pointer lookup ───────────────────────────────────────────────
-    def _photo_lookup(self, address: str) -> list[dict]:
-        """
-        Dedicated search for photo_index pointer docs.
-        Detects photo pointers two ways:
-          1. struct_data.document_type == "photo_index"  (after permanent sync fix)
-          2. doc.id starts with "photo_pointer"          (jsonData-only imports)
-        For case 2, parses the OneDrive URL from snippet text via regex.
-        """
-        import re as _re
+    # ── Photo lookup — reads photo_index.json from GCS ──────────────────────
+    def _photo_lookup(self, address: str) -> list:
         if not address:
             return []
 
-        queries = [
-            f"{address} photos OneDrive images",
-            f"photo pointer {address} photos",
-        ]
-        media_links = []
-        seen_urls:  set = set()
-        seen_ids:   set = set()
+        def _norm(s):
+            s = s.lower().strip()
+            s = re.sub(r"\b(drive|dr|avenue|ave|road|rd|street|st|blvd|boulevard|lane|ln|court|ct|place|pl|west|east|north|south|w|e|n|s)\b", "", s)
+            return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
-        for q in queries:
-            try:
-                req = discoveryengine.SearchRequest(
-                    serving_config=self._serving_config,
-                    query=q,
-                    page_size=30,
-                    content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                        snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                            return_snippet=True),
-                        summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-                            summary_result_count=10,
-                            include_citations=False,
-                            ignore_adversarial_query=True,
-                            ignore_non_summary_seeking_query=False,
-                        ),
-                    ),
-                )
-                resp    = self._search_client.search(req)
-                results = list(resp)
+        def _match(key, query):
+            kn, qn = _norm(key), _norm(query)
+            if kn == qn:
+                return True
+            q_tok = set(qn.split())
+            k_tok = set(kn.split())
+            if q_tok and q_tok.issubset(k_tok):
+                return True
+            nums = re.findall(r"\d+", query)
+            if nums and any(n in kn for n in nums):
+                words = [w for w in qn.split() if not w.isdigit() and len(w) > 2]
+                if any(w in kn for w in words):
+                    return True
+            return False
 
-                for r in results:
-                    doc = r.document
-                    if doc.id in seen_ids:
-                        continue
-                    seen_ids.add(doc.id)
+        bucket_name = (os.getenv("GCS_BUCKET_NAME") or
+                       os.getenv("GCS_BUCKET_RAW") or
+                       os.getenv("GCS_RAW_BUCKET", ""))
+        if not bucket_name:
+            print("[Photo] GCS_BUCKET_NAME not set")
+            return []
 
-                    # Path 1: struct_data populated (after sync fix)
-                    struct = {}
-                    try:
-                        if doc.struct_data:
-                            struct = dict(doc.struct_data)
-                    except Exception:
-                        pass
+        try:
+            from google.cloud import storage as _gcs
+            from google.oauth2 import service_account as _sa
+            key_path = SA_KEY
+            creds = _sa.Credentials.from_service_account_file(
+                str(key_path), scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            gcs_client = _gcs.Client(credentials=creds)
+            bucket = gcs_client.bucket(bucket_name)
+            blob = bucket.blob("manifests/photo_index.json")
+            if not blob.exists():
+                print("[Photo] photo_index.json not found in GCS")
+                return []
+            photo_index = json.loads(blob.download_as_text())
+        except Exception as e:
+            print(f"[Photo] GCS error: {e}")
+            return []
 
-                    doc_type     = struct.get("document_type", "")
-                    onedrive_url = struct.get("onedrive_url", "")
-                    title        = struct.get("title", "")
-                    photo_count  = struct.get("photo_count", 0)
-
-                    if doc_type == "photo_index" and onedrive_url:
-                        if onedrive_url not in seen_urls:
-                            seen_urls.add(onedrive_url)
-                            media_links.append({
-                                "type":  "photo",
-                                "title": title,
-                                "url":   onedrive_url,
-                                "count": int(photo_count) if photo_count else 0,
-                            })
-                        continue
-
-                    # Path 2: jsonData-only doc — detect by doc.id prefix
-                    if not doc.id.startswith("photo_pointer"):
-                        continue
-
-                    # Extract OneDrive URL from snippet or summary text
-                    snippet_text = ""
-                    try:
-                        from google.protobuf.json_format import MessageToDict as _M2D
-                        dsd = _M2D(doc.derived_struct_data)
-                        for s in dsd.get("snippets", []):
-                            snippet_text += s.get("snippet", "") + " "
-                    except Exception:
-                        pass
-
-                    # Also try reading from the Vertex per-result extractive content
-                    url_match   = _re.search(r"https://\S+sharepoint\S+", snippet_text)
-                    count_match = _re.search(r"(\d+)\s+photos?", snippet_text, _re.IGNORECASE)
-                    title_match = _re.search(r'"title":\s*"([^"]+)"', snippet_text)
-
-                    if url_match:
-                        od_url = url_match.group(0).rstrip(".,;")
-                        if od_url not in seen_urls:
-                            seen_urls.add(od_url)
-                            t = title_match.group(1) if title_match else f"{address} — Photos"
-                            c = int(count_match.group(1)) if count_match else 0
-                            media_links.append({
-                                "type":  "photo",
-                                "title": t,
-                                "url":   od_url,
-                                "count": c,
-                            })
-                    else:
-                        # URL not in snippet — record placeholder so user knows photos exist
-                        if doc.id not in seen_ids:
-                            t = title_match.group(1) if title_match else f"{address} — Photos"
-                            c = int(count_match.group(1)) if count_match else 0
-                            media_links.append({
-                                "type":  "photo",
-                                "title": t + " (open OneDrive to view)",
-                                "url":   "#",
-                                "count": c,
-                            })
-
-            except Exception as e:
-                print(f"[Vertex] Photo lookup error: {e}")
-
-        return media_links
+        results = []
+        for prop_name, data in photo_index.items():
+            if _match(prop_name, address):
+                results.append({
+                    "type":  "photo",
+                    "title": data.get("title") or f"{prop_name} - Photos",
+                    "url":   data.get("url", ""),
+                    "count": data.get("count", 0),
+                })
+        if not results:
+            print(f"[Photo] No match for '{address}' in {len(photo_index)} properties")
+        return results
 
     # ── Gemini synthesis ───────────────────────────────────────────────────
     def synthesize(
@@ -500,6 +454,7 @@ class JobIntelligence:
         query:      str,
         excerpts:   list[dict],
         session:    Optional[ChatSession] = None,
+        media_links: list = None,
     ) -> str:
         """
         Build a prompt from excerpts + conversation history and call Gemini.
@@ -533,10 +488,16 @@ class JobIntelligence:
             if session and session.job_context
             else ""
         )
+        media_hint = ""
+        if media_links:
+            for m in media_links:
+                if m.get("type") == "photo":
+                    media_hint += f"\n[PHOTO_CARD_PRESENT: {m.get('count',0)} photos available for {m.get('title','')}]"
+
         prompt = (
             f"DOCUMENT EXCERPTS:\n{context_block}\n\n"
             f"{'─' * 40}{job_hint}\n\n"
-            f"Bob's question: {query}"
+            f"{media_hint}\n\nBob's question: {query}"
         )
 
         try:
@@ -573,7 +534,8 @@ class JobIntelligence:
         # Stage 1: Vertex retrieval
         excerpts, media_links = self.retrieve(query, job_context=session.job_context)
 
-        # Supplement with dedicated photo lookup if query is photo-related
+
+        # GCS photo lookup for photo queries
         _photo_words = ("photo", "photos", "picture", "pictures", "image", "images", "show me")
         if any(w in query.lower() for w in _photo_words):
             extra = self._photo_lookup(session.job_context or query)
@@ -581,7 +543,7 @@ class JobIntelligence:
             media_links += [m for m in extra if m["url"] not in seen]
 
         # Stage 2: Gemini synthesis
-        answer = self.synthesize(query, excerpts, session)
+        answer = self.synthesize(query, excerpts, session, media_links=media_links)
 
         # Update session history
         session.history.append(ChatMessage(role="user",  text=query))
@@ -595,8 +557,7 @@ class JobIntelligence:
         )
         confidence = _score_confidence(len(excerpts), has_direct)
         followups  = _suggest_followups(query, session.job_context)
-        sources     = list({exc["source"] for exc in excerpts})
-        source_uris = {exc["source"]: exc.get("source_uri", "") for exc in excerpts}
+        sources    = list({exc["source"] for exc in excerpts})
 
         return IntelligenceResponse(
             answer=answer,
@@ -606,7 +567,6 @@ class JobIntelligence:
             job_context=session.job_context,
             suggested_followups=followups,
             media_links=media_links,
-            source_uris=source_uris,
         )
 
     def clear_session(self, session_id: str):
