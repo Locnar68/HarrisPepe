@@ -1189,7 +1189,7 @@ function appendAiMessage(data) {
   const followupsHtml = (data.suggested_followups || []).length
     ? `<div class="followups-row">
         ${data.suggested_followups.map(f =>
-          `<button class="followup-btn" onclick="sendQuick(${JSON.stringify(f)})">${escHtml(f)}</button>`
+          `<button class="followup-btn" onclick='sendQuick(${JSON.stringify(f)})'>${escHtml(f)}</button>`
         ).join('')}
        </div>`
     : '';

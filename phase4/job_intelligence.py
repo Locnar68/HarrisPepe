@@ -1,18 +1,21 @@
 """
-Phase 4B: Job Intelligence Engine
-===================================
-Two-stage pipeline:
-  1. Vertex AI Search  →  retrieve relevant document excerpts
-  2. Gemini 1.5 Pro    →  synthesize a direct, sourced answer
+Phase 4B: Job Intelligence Engine — OPTIMIZED ARCHITECTURE
+============================================================
+Two-stage pipeline (NO QUOTA WASTE):
+  1. Vertex AI Search  →  RETRIEVAL ONLY (snippets, no LLM summarization)
+  2. Gemini 2.5 Flash  →  ALL synthesis (cheap, fast, better answers)
 
 Key features:
-  - Multi-turn conversation: Bob can ask follow-ups without re-stating the job
-  - Job context tracking: detects which job/address is "in focus"
-  - Confidence scoring: tells Bob when sources are thin
-  - Structured response format: answer + sources + gaps + suggested follow-ups
+  - NO summary_spec → does not burn discoveryengine.googleapis.com/llm_requests quota
+  - Multi-turn conversation with job context tracking
+  - 15-minute search result caching → fewer Vertex calls
+  - Snippet-based Gemini synthesis → better grounded answers
+  - Resilient to quota errors → returns partial results gracefully
+  - Photo lookup from GCS photo_index.json (preserved)
+  - Large PDF and OneDrive media link support (preserved)
 
 INSTALL:
-    pip install google-generativeai google-cloud-discoveryengine
+    pip install google-generativeai google-cloud-discoveryengine google-cloud-storage
 """
 
 import os
@@ -29,19 +32,24 @@ from google.cloud import discoveryengine_v1 as discoveryengine
 from google.oauth2 import service_account
 from google.api_core.client_options import ClientOptions
 
-# ── Config — all values read from environment / .env ─────────────────────────
-# The bootstrap writes these into Phase3_Bootstrap/secrets/.env automatically.
+# ── Config — read from environment / .env ───────────────────────────────────
 import os as _os
 from pathlib import Path as _Path
 
 PROJECT_ID   = _os.getenv("GCP_PROJECT_ID",       "commanding-way-380716")
 ENGINE_ID    = _os.getenv("VERTEX_ENGINE_ID",      "madison-ave-search-app")
 LOCATION     = _os.getenv("GCP_LOCATION",          "global")
-GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-1.5-flash")
+# NOTE: gemini-1.5-* and gemini-1.0-* are fully shut down (return 404).
+# As of April 2026, gemini-2.5-flash is the recommended production model.
+# Plan to migrate to a 3.x-series model before June 2026.
+GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
+
 MAX_RESULTS  = 12
 MAX_SEGMENTS = 20
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
+CACHE_MINUTES = 15   # Reuse Vertex search results within this window per session
+
 
 def _resolve_sa_key() -> str:
     explicit = _os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
@@ -55,31 +63,32 @@ def _resolve_sa_key() -> str:
         return str(local_key)
     return "service-account.json"
 
+
 SA_KEY = _resolve_sa_key()
 
 
-# ── System prompt  ────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are a real estate investment intelligence assistant.
-Your job is to help the portfolio owner get direct, accurate answers about
-their properties, deals, financials, legal documents, and investment performance.
+# ── System prompt for Gemini ─────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are a real estate and document intelligence assistant.
+You help the portfolio owner get direct, accurate answers about
+their properties, deals, financials, legal documents, permits, and investment performance.
 
 RULES:
 1. Answer using ONLY the document excerpts provided. Never invent addresses,
    dollar amounts, dates, entity names, or lender details.
 2. For financial figures: state the number, cite the source document, and note
-   if the figure may be partial (e.g., one invoice does not equal total project cost).
+   if the figure may be partial.
 3. For property questions, structure answers as:
    - Property, Appraisal / Purchase Price, Key Dates, Financial Summary, Open Items
 4. If documents do not clearly answer the question, say exactly what you DID find
    and what is missing. The owner can then pull the right document.
 5. Use conversation history to track which property is in focus so the owner
    does not have to repeat the address on every follow-up.
-6. Be direct and concise. No preambles like Great question or Certainly.
+6. Be direct and concise. No preambles like "Great question" or "Certainly".
 7. If you detect conflicting figures across documents, flag it explicitly.
 8. When a photo card appears in results for a photo request, always reply:
-   Photos are available for this property - click the photo link below to view them in OneDrive.
-   Note: I cannot display photos directly in this chat.
-   If no photo card is present say: No photos are indexed for this property yet.
+   "Photos are available for this property - click the photo link below to view them in OneDrive.
+   Note: I cannot display photos directly in this chat."
+   If no photo card is present say: "No photos are indexed for this property yet."
 9. Keep answers under 300 words unless a detailed breakdown is explicitly requested.
 10. For portfolio-wide questions, summarize what the indexed documents show.
 
@@ -91,42 +100,50 @@ Permits, Inspection reports, Flood disclosures, Loan letters, Invoices, Insuranc
 LLC entities include: Bobbomatic LLC, Flip It LLC, Shearwater Way LLC, Lama Drive LLC."""
 
 
-# ── Data classes ──────────────────────────────────────────────────────────────
+# ── Data classes ────────────────────────────────────────────────────────────
 @dataclass
 class ChatMessage:
-    role: str     # "user" or "model"
+    role: str
     text: str
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
+class CachedSearch:
+    query: str
+    excerpts: list
+    media_links: list
+    source_uris: dict
+    cached_at: float
+
+
+@dataclass
 class ChatSession:
     session_id:   str
-    history:      list[ChatMessage] = field(default_factory=list)
-    job_context:  Optional[str] = None   # current job address / ID in focus
+    history:      list = field(default_factory=list)
+    job_context:  Optional[str] = None
     created_at:   float = field(default_factory=time.time)
     last_active:  float = field(default_factory=time.time)
+    last_search:  Optional[CachedSearch] = None
 
 
 @dataclass
 class IntelligenceResponse:
     answer:          str
-    sources:         list[str]
+    sources:         list
     search_results:  int
-    confidence:      str          # "high" | "medium" | "low" | "none"
+    confidence:      str
     job_context:     Optional[str]
-    suggested_followups: list[str]
-    media_links:     list[dict] = field(default_factory=list)
-    # media_links entries:
-    #   photo pointer: {type:"photos", property:str, count:int, url:str}
-    #   large pdf:     {type:"document", title:str, size_mb:float, url:str}
+    suggested_followups: list
+    media_links:     list = field(default_factory=list)
+    source_uris:     dict = field(default_factory=dict)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────────
 def _load_creds():
-    key_path = Path(__file__).parent / SA_KEY
+    key_path = Path(SA_KEY)
     if not key_path.exists():
-        key_path = Path(SA_KEY)
+        key_path = Path(__file__).parent / SA_KEY
     return service_account.Credentials.from_service_account_file(
         str(key_path),
         scopes=["https://www.googleapis.com/auth/cloud-platform"]
@@ -155,7 +172,6 @@ def _extract_job_context(text: str) -> Optional[str]:
 
 
 def _score_confidence(excerpt_count: int, has_direct_hit: bool) -> str:
-    """Rate how confident we are based on retrieval quality."""
     if excerpt_count == 0:
         return "none"
     if excerpt_count >= 5 and has_direct_hit:
@@ -165,8 +181,7 @@ def _score_confidence(excerpt_count: int, has_direct_hit: bool) -> str:
     return "low"
 
 
-def _suggest_followups(query: str, job_context: Optional[str]) -> list[str]:
-    """Generate contextual follow-up suggestions."""
+def _suggest_followups(query: str, job_context: Optional[str]) -> list:
     q = query.lower()
     suggestions = []
 
@@ -180,6 +195,10 @@ def _suggest_followups(query: str, job_context: Optional[str]) -> list[str]:
         suggestions += ["Has the adjuster responded?", "What's the approved scope amount?"]
     elif any(w in q for w in ["estimate", "scope", "xactimate"]):
         suggestions += ["Has the insurer approved the scope?", "Any change orders?"]
+    elif any(w in q for w in ["apprais", "value", "comparable"]):
+        suggestions += ["What was the comparable sales used?", "What's the site value?"]
+    elif any(w in q for w in ["loan", "draw", "lender"]):
+        suggestions += ["What's the current loan balance?", "Are there any other draws?"]
 
     if job_context and "job" not in q:
         suggestions.append(f"What documents do we have for {job_context}?")
@@ -187,20 +206,67 @@ def _suggest_followups(query: str, job_context: Optional[str]) -> list[str]:
     return suggestions[:3]
 
 
-# ── Core engine ───────────────────────────────────────────────────────────────
+def _safe_struct_to_dict(struct):
+    """Convert proto struct_data to a Python dict safely."""
+    if struct is None:
+        return {}
+    try:
+        return dict(struct)
+    except Exception:
+        try:
+            result = {}
+            for k in struct:
+                v = struct[k]
+                result[k] = v
+            return result
+        except Exception:
+            return {}
+
+
+def _extract_snippets_from_doc(doc) -> str:
+    """Pull snippet text from derived_struct_data without triggering LLM quota."""
+    snippet_text = ""
+    try:
+        if not hasattr(doc, "derived_struct_data") or doc.derived_struct_data is None:
+            return ""
+        derived = doc.derived_struct_data
+        try:
+            derived_dict = dict(derived)
+        except Exception:
+            derived_dict = {}
+
+        snippets = derived_dict.get("snippets", [])
+        if snippets:
+            parts = []
+            for s in snippets[:3]:
+                try:
+                    if isinstance(s, dict):
+                        text = s.get("snippet", "") or s.get("content", "")
+                    else:
+                        text = getattr(s, "snippet", "") or getattr(s, "content", "")
+                    if text:
+                        text = re.sub(r"<[^>]+>", "", str(text))
+                        parts.append(text.strip())
+                except Exception:
+                    continue
+            snippet_text = " ... ".join(parts)
+    except Exception:
+        pass
+    return snippet_text[:600]
+
+
+# ── Core engine ─────────────────────────────────────────────────────────────
 class JobIntelligence:
     """
-    Two-stage RAG: Vertex AI Search (retrieval) → Gemini Pro (synthesis).
-    Maintains per-session conversation history and job context.
+    Two-stage RAG with optimized quota usage:
+      Vertex AI Search (snippets only) → Gemini Flash (synthesis)
     """
 
     def __init__(self):
-        # Gemini setup
         api_key = os.environ.get("GEMINI_API_KEY")
         if api_key:
             genai.configure(api_key=api_key)
         else:
-            # Fall back to service account for Vertex-hosted Gemini
             creds = _load_creds()
             genai.configure(credentials=creds)
 
@@ -208,8 +274,8 @@ class JobIntelligence:
             model_name=GEMINI_MODEL,
             system_instruction=SYSTEM_PROMPT,
         )
+        print(f"[Phase4] Gemini synthesis ON ({GEMINI_MODEL})")
 
-        # Vertex AI Search client
         self._search_client = discoveryengine.SearchServiceClient(
             credentials=_load_creds(),
             client_options=ClientOptions(
@@ -223,11 +289,11 @@ class JobIntelligence:
             f"collections/default_collection/engines/{ENGINE_ID}/"
             f"servingConfigs/default_search"
         )
+        print(f"[Phase4] Vertex AI Search engine: {ENGINE_ID} (project: {PROJECT_ID})")
+        print(f"[Phase4] Architecture: RETRIEVAL-ONLY (no LLM summary, saves quota)")
 
-        # Session store
-        self._sessions: dict[str, ChatSession] = {}
+        self._sessions = {}
 
-    # ── Session management ─────────────────────────────────────────────────
     def new_session(self) -> str:
         sid = str(uuid.uuid4())
         self._sessions[sid] = ChatSession(session_id=sid)
@@ -237,7 +303,6 @@ class JobIntelligence:
     def get_session(self, session_id: str) -> Optional[ChatSession]:
         sess = self._sessions.get(session_id)
         if sess:
-            # Expire old sessions
             if time.time() - sess.last_active > SESSION_TTL:
                 del self._sessions[session_id]
                 return None
@@ -245,23 +310,17 @@ class JobIntelligence:
 
     def _cleanup_old_sessions(self):
         now = time.time()
-        expired = [
-            sid for sid, s in self._sessions.items()
-            if now - s.last_active > SESSION_TTL
-        ]
+        expired = [sid for sid, s in self._sessions.items()
+                   if now - s.last_active > SESSION_TTL]
         for sid in expired:
             del self._sessions[sid]
 
-    # ── Vertex retrieval ───────────────────────────────────────────────────
-    def retrieve(self, query: str, job_context: Optional[str] = None) -> list[dict]:
+    def retrieve(self, query: str, job_context: Optional[str] = None) -> tuple:
         """
-        Query Vertex AI Search and return a list of excerpt dicts:
-        {"source": str, "content": str}
+        Vertex AI Search SNIPPET ONLY (no summary_spec → no LLM quota burn).
+        Returns (excerpts, media_links, source_uris).
         """
-        # If we have a job context, prepend it to sharpen retrieval
-        search_query = query
-        if job_context:
-            search_query = f"{job_context} {query}"
+        search_query = f"{job_context} {query}" if job_context else query
 
         def _make_req(q, flt=""):
             kw = dict(
@@ -269,58 +328,48 @@ class JobIntelligence:
                 query=q,
                 page_size=MAX_RESULTS,
                 content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
-                    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(return_snippet=True),
-                    summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-                        summary_result_count=10,
-                        include_citations=True,
-                        ignore_adversarial_query=True,
-                        ignore_non_summary_seeking_query=False,
+                    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                        return_snippet=True,
+                        max_snippet_count=3,
                     ),
+                    # NOTE: NO summary_spec → does not invoke discoveryengine LLM
                 ),
             )
             if flt:
                 kw["filter"] = flt
             return discoveryengine.SearchRequest(**kw)
 
-        request = _make_req(search_query, 'NOT document_type: ANY("scanned_document")')
-
-        # Dummy block kept to satisfy old structure
         try:
-            response = self._search_client.search(request)
-            results  = list(response)
+            response = self._search_client.search(
+                _make_req(search_query, 'NOT document_type: ANY("scanned_document")'))
+            results = list(response)
             if not results:
                 response = self._search_client.search(_make_req(search_query))
                 results = list(response)
         except Exception as e:
-            print(f"[Vertex] Search error: {e}")
+            err_msg = str(e)
+            print(f"[Vertex] Search error: {err_msg[:200]}")
             try:
                 response = self._search_client.search(_make_req(search_query))
                 results = list(response)
             except Exception as e2:
-                print(f"[Vertex] Retry error: {e2}")
-                return [], []
+                print(f"[Vertex] Retry error: {str(e2)[:200]}")
+                return [], [], {}
 
-        excerpts     = []
-        media_links  = []
+        excerpts = []
+        media_links = []
+        source_uris = {}
 
         for result in results:
             doc = result.document
-
-            # Read struct_data safely
-            struct = {}
-            try:
-                if doc.struct_data:
-                    struct = dict(doc.struct_data)
-            except Exception:
-                pass
+            struct = _safe_struct_to_dict(doc.struct_data)
 
             source_uri   = struct.get("source_uri", "")
             doc_type     = struct.get("document_type", "")
             onedrive_url = struct.get("onedrive_url", "")
 
-            # ── Pointer docs: extract media links, skip content extraction ──
             if doc_type == "photo_index":
-                prop_name   = struct.get("property", struct.get("title", "Property"))
+                prop_name = struct.get("property", struct.get("title", "Property"))
                 photo_count = struct.get("photo_count", 0)
                 if onedrive_url:
                     media_links.append({
@@ -329,7 +378,6 @@ class JobIntelligence:
                         "count":    photo_count,
                         "url":      onedrive_url,
                     })
-                # Also inject a brief content note so Gemini knows about photos
                 excerpts.append({
                     "source":  f"{prop_name} (photo index)",
                     "content": f"{photo_count} photos available for {prop_name} in OneDrive.",
@@ -337,7 +385,7 @@ class JobIntelligence:
                 continue
 
             if doc_type == "large_pdf_pointer":
-                title   = struct.get("title", "Document")
+                title = struct.get("title", "Document")
                 size_mb = struct.get("size_mb", 0)
                 gcs_uri = struct.get("gcs_uri", "")
                 media_links.append({
@@ -352,17 +400,22 @@ class JobIntelligence:
                 })
                 continue
 
-            # ── Regular docs: collect as source chip with download URI ─────
-            title = struct.get("title", doc.id or "Unknown")
-            source_label = source_uri.split("/")[-1] if source_uri else title
+            title = struct.get("title", "")
+            source_label = source_uri.split("/")[-1] if source_uri else (title or doc.id or "Unknown")
+            snippet_content = _extract_snippets_from_doc(doc)
+
+            if not snippet_content:
+                snippet_content = title or source_label
+
             if source_label and source_label not in ("Unknown", ""):
                 excerpts.append({
                     "source":     source_label,
                     "source_uri": source_uri,
-                    "content":    "",
+                    "content":    snippet_content,
                 })
+                if source_uri:
+                    source_uris[source_label] = source_uri
 
-        # Deduplicate media links by URL
         seen_urls = set()
         unique_media = []
         for m in media_links:
@@ -370,30 +423,18 @@ class JobIntelligence:
                 seen_urls.add(m["url"])
                 unique_media.append(m)
 
-        # Read Vertex summary AFTER pager materialised
-        try:
-            summary_text = ""
-            if hasattr(response, "summary") and response.summary:
-                summary_text = response.summary.summary_text or ""
-            if summary_text:
-                if excerpts:
-                    excerpts[0]["content"] = summary_text
-                else:
-                    excerpts.append({"source": "Vertex Summary", "source_uri": "", "content": summary_text})
-        except Exception as e:
-            print("[Vertex] Summary read error:", e)
+        return excerpts, unique_media, source_uris
 
-        return excerpts, unique_media
-
-
-    # ── Photo lookup — reads photo_index.json from GCS ──────────────────────
     def _photo_lookup(self, address: str) -> list:
         if not address:
             return []
 
         def _norm(s):
             s = s.lower().strip()
-            s = re.sub(r"\b(drive|dr|avenue|ave|road|rd|street|st|blvd|boulevard|lane|ln|court|ct|place|pl|west|east|north|south|w|e|n|s)\b", "", s)
+            s = re.sub(
+                r"\b(drive|dr|avenue|ave|road|rd|street|st|blvd|boulevard|"
+                r"lane|ln|court|ct|place|pl|west|east|north|south|w|e|n|s)\b",
+                "", s)
             return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
         def _match(key, query):
@@ -415,20 +456,18 @@ class JobIntelligence:
                        os.getenv("GCS_BUCKET_RAW") or
                        os.getenv("GCS_RAW_BUCKET", ""))
         if not bucket_name:
-            print("[Photo] GCS_BUCKET_NAME not set")
             return []
 
         try:
             from google.cloud import storage as _gcs
             from google.oauth2 import service_account as _sa
-            key_path = SA_KEY
             creds = _sa.Credentials.from_service_account_file(
-                str(key_path), scopes=["https://www.googleapis.com/auth/cloud-platform"])
+                str(SA_KEY),
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
             gcs_client = _gcs.Client(credentials=creds)
             bucket = gcs_client.bucket(bucket_name)
             blob = bucket.blob("manifests/photo_index.json")
             if not blob.exists():
-                print("[Photo] photo_index.json not found in GCS")
                 return []
             photo_index = json.loads(blob.download_as_text())
         except Exception as e:
@@ -444,60 +483,47 @@ class JobIntelligence:
                     "url":   data.get("url", ""),
                     "count": data.get("count", 0),
                 })
-        if not results:
-            print(f"[Photo] No match for '{address}' in {len(photo_index)} properties")
         return results
 
-    # ── Gemini synthesis ───────────────────────────────────────────────────
     def synthesize(
         self,
-        query:      str,
-        excerpts:   list[dict],
-        session:    Optional[ChatSession] = None,
+        query:       str,
+        excerpts:    list,
+        session:     Optional[ChatSession] = None,
         media_links: list = None,
     ) -> str:
-        """
-        Build a prompt from excerpts + conversation history and call Gemini.
-        Returns the raw answer text.
-        """
-        # Format document excerpts
         if excerpts:
             ctx_parts = []
-            for i, exc in enumerate(excerpts, 1):
-                ctx_parts.append(
-                    f"[SOURCE {i} — {exc['source']}]\n{exc['content']}"
-                )
+            for i, exc in enumerate(excerpts[:MAX_SEGMENTS], 1):
+                content = exc.get("content", "") or "(no preview available)"
+                ctx_parts.append(f"[SOURCE {i} — {exc['source']}]\n{content}")
             context_block = "\n\n─────\n\n".join(ctx_parts)
         else:
             context_block = "(No relevant documents retrieved for this query.)"
 
-        # Build conversation history for Gemini
         history = []
         if session and session.history:
-            # Keep last N turns, converting to Gemini format
             recent = session.history[-(MAX_HISTORY * 2):]
             for msg in recent:
-                history.append({
-                    "role":  msg.role,
-                    "parts": [msg.text]
-                })
+                history.append({"role": msg.role, "parts": [msg.text]})
 
-        # Build the user turn
         job_hint = (
             f"\n[Current job in focus: {session.job_context}]"
-            if session and session.job_context
-            else ""
+            if session and session.job_context else ""
         )
         media_hint = ""
         if media_links:
             for m in media_links:
-                if m.get("type") == "photo":
-                    media_hint += f"\n[PHOTO_CARD_PRESENT: {m.get('count',0)} photos available for {m.get('title','')}]"
+                if m.get("type") in ("photo", "photos"):
+                    cnt = m.get('count', 0)
+                    name = m.get('title') or m.get('property', '')
+                    media_hint += f"\n[PHOTO_CARD_PRESENT: {cnt} photos available for {name}]"
 
         prompt = (
             f"DOCUMENT EXCERPTS:\n{context_block}\n\n"
-            f"{'─' * 40}{job_hint}\n\n"
-            f"{media_hint}\n\nBob's question: {query}"
+            f"{'─' * 40}{job_hint}\n"
+            f"{media_hint}\n\n"
+            f"User's question: {query}"
         )
 
         try:
@@ -506,19 +532,14 @@ class JobIntelligence:
             return response.text
         except Exception as e:
             print(f"[Gemini] Synthesis error: {e}")
-            return (
-                "I hit an error generating your answer. "
-                f"Vertex retrieved {len(excerpts)} document excerpt(s) — "
-                "please try rephrasing or check the logs."
-            )
+            if excerpts:
+                doc_list = ", ".join(e["source"] for e in excerpts[:5])
+                return (f"I found {len(excerpts)} relevant document(s): {doc_list}. "
+                        "Gemini hit an error generating the full answer — please try again.")
+            return ("I couldn't find relevant documents for that question. "
+                    "Try a more specific query (address, permit number, or document name).")
 
-    # ── Main entry point ───────────────────────────────────────────────────
     def chat(self, query: str, session_id: Optional[str] = None) -> IntelligenceResponse:
-        """
-        Full pipeline: retrieve → synthesize → return structured response.
-        Creates a new session if session_id is None or invalid.
-        """
-        # Resolve session
         session = None
         if session_id:
             session = self.get_session(session_id)
@@ -526,33 +547,53 @@ class JobIntelligence:
             sid = self.new_session()
             session = self._sessions[sid]
 
-        # Update job context if a new address/ID is mentioned
         detected = _extract_job_context(query)
         if detected:
             session.job_context = detected
 
-        # Stage 1: Vertex retrieval
-        excerpts, media_links = self.retrieve(query, job_context=session.job_context)
+        search_key = f"{session.job_context} {query}" if session.job_context else query
 
+        excerpts, media_links, source_uris = [], [], {}
+        now = time.time()
+        cache = session.last_search
+        cache_age_ok = (
+            cache is not None
+            and cache.query == search_key
+            and (now - cache.cached_at) < (CACHE_MINUTES * 60)
+        )
 
-        # GCS photo lookup for photo queries
-        _photo_words = ("photo", "photos", "picture", "pictures", "image", "images", "show me")
+        if cache_age_ok:
+            print(f"[Cache] Reusing Vertex results from {int(now - cache.cached_at)}s ago")
+            excerpts    = cache.excerpts
+            media_links = cache.media_links
+            source_uris = cache.source_uris
+        else:
+            excerpts, media_links, source_uris = self.retrieve(
+                query, job_context=session.job_context)
+            session.last_search = CachedSearch(
+                query=search_key,
+                excerpts=excerpts,
+                media_links=media_links,
+                source_uris=source_uris,
+                cached_at=now,
+            )
+
+        _photo_words = ("photo", "photos", "picture", "pictures",
+                        "image", "images", "show me")
         if any(w in query.lower() for w in _photo_words):
             extra = self._photo_lookup(session.job_context or query)
-            seen  = {m["url"] for m in media_links}
-            media_links += [m for m in extra if m["url"] not in seen]
+            seen = {m["url"] for m in media_links}
+            media_links = media_links + [m for m in extra if m["url"] not in seen]
 
-        # Stage 2: Gemini synthesis
         answer = self.synthesize(query, excerpts, session, media_links=media_links)
 
-        # Update session history
         session.history.append(ChatMessage(role="user",  text=query))
         session.history.append(ChatMessage(role="model", text=answer))
         session.last_active = time.time()
 
-        # Score confidence
         has_direct = any(
-            any(word in exc["content"].lower() for word in query.lower().split()[:4])
+            any(word in (exc.get("content") or "").lower()
+                for word in query.lower().split()[:4])
             for exc in excerpts
         )
         confidence = _score_confidence(len(excerpts), has_direct)
@@ -567,22 +608,21 @@ class JobIntelligence:
             job_context=session.job_context,
             suggested_followups=followups,
             media_links=media_links,
+            source_uris=source_uris,
         )
 
     def clear_session(self, session_id: str):
-        """Reset conversation history while keeping the session alive."""
         session = self.get_session(session_id)
         if session:
             session.history.clear()
             session.job_context = None
+            session.last_search = None
 
 
-# ── Singleton for Flask app ───────────────────────────────────────────────────
 _intelligence: Optional[JobIntelligence] = None
 
 
 def get_intelligence() -> JobIntelligence:
-    """Return the app-level singleton, initializing on first call."""
     global _intelligence
     if _intelligence is None:
         _intelligence = JobIntelligence()
