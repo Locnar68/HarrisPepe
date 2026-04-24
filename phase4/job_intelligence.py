@@ -44,8 +44,9 @@ LOCATION     = _os.getenv("GCP_LOCATION",          "global")
 # Plan to migrate to a 3.x-series model before June 2026.
 GEMINI_MODEL = _os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
 
-MAX_RESULTS  = 12
-MAX_SEGMENTS = 20
+MAX_RESULTS         = 50    # Vertex page_size — covers more docs per query
+MAX_SEGMENTS        = 40    # Default # of doc excerpts sent to Gemini synthesis
+MAX_SEGMENTS_LIST   = 200   # When user asks 'list all' — title-only context for many docs
 MAX_HISTORY  = 8
 SESSION_TTL  = 3600
 CACHE_MINUTES = 15   # Reuse Vertex search results within this window per session
@@ -125,6 +126,7 @@ class ChatSession:
     created_at:   float = field(default_factory=time.time)
     last_active:  float = field(default_factory=time.time)
     last_search:  Optional[CachedSearch] = None
+    page_offset:  int = 0   # how many items already shown for current cached search
 
 
 @dataclass
@@ -491,6 +493,7 @@ class JobIntelligence:
         excerpts:    list,
         session:     Optional[ChatSession] = None,
         media_links: list = None,
+        page_offset: int = 0,
     ) -> str:
         if excerpts:
             ctx_parts = []
@@ -547,45 +550,96 @@ class JobIntelligence:
             sid = self.new_session()
             session = self._sessions[sid]
 
-        detected = _extract_job_context(query)
-        if detected:
-            session.job_context = detected
+        # Detect "show more" / "next page" requests — serve next slice from cache
+        q_lower = query.lower().strip()
+        is_more_request = any(p in q_lower for p in [
+            "show more", "show me more", "more results", "more documents",
+            "next page", "next batch", "see more", "continue", "and more",
+        ]) and len(q_lower) < 60   # only short queries — don't false-trigger
+        served_from_pagination = False
 
-        search_key = f"{session.job_context} {query}" if session.job_context else query
-
-        excerpts, media_links, source_uris = [], [], {}
-        now = time.time()
-        cache = session.last_search
-        cache_age_ok = (
-            cache is not None
-            and cache.query == search_key
-            and (now - cache.cached_at) < (CACHE_MINUTES * 60)
-        )
-
-        if cache_age_ok:
-            print(f"[Cache] Reusing Vertex results from {int(now - cache.cached_at)}s ago")
+        if is_more_request and session.last_search and session.last_search.excerpts:
+            print(f"[Pagination] 'Show more' detected — advancing offset from {session.page_offset}")
+            cache = session.last_search
             excerpts    = cache.excerpts
             media_links = cache.media_links
             source_uris = cache.source_uris
+            # Advance the offset based on what was last shown
+            cached_query_lower = cache.query.lower()
+            cached_is_list = any(p in cached_query_lower for p in [
+                "list all", "list every", "all properties", "all documents",
+                "all jobs", "show me all", "show all", "every property",
+                "every job", "portfolio", "what properties", "which properties",
+                "what documents do we have"
+            ])
+            page_size = MAX_SEGMENTS_LIST if cached_is_list else MAX_SEGMENTS
+            session.page_offset = session.page_offset + page_size
+            if session.page_offset >= len(excerpts):
+                # No more results
+                answer_override = (
+                    f"No more documents to show — you have already seen all "
+                    f"{len(excerpts)} matching documents from the previous query."
+                )
+                session.history.append(ChatMessage(role="user",  text=query))
+                session.history.append(ChatMessage(role="model", text=answer_override))
+                session.last_active = time.time()
+                return IntelligenceResponse(
+                    answer=answer_override,
+                    sources=list({e["source"] for e in excerpts}),
+                    search_results=len(excerpts),
+                    confidence="high",
+                    job_context=session.job_context,
+                    suggested_followups=[],
+                    media_links=media_links,
+                    source_uris=source_uris,
+                )
+            served_from_pagination = True
         else:
-            excerpts, media_links, source_uris = self.retrieve(
-                query, job_context=session.job_context)
-            session.last_search = CachedSearch(
-                query=search_key,
-                excerpts=excerpts,
-                media_links=media_links,
-                source_uris=source_uris,
-                cached_at=now,
+            detected = _extract_job_context(query)
+            if detected:
+                session.job_context = detected
+
+            search_key = f"{session.job_context} {query}" if session.job_context else query
+
+            excerpts, media_links, source_uris = [], [], {}
+            now = time.time()
+            cache = session.last_search
+            cache_age_ok = (
+                cache is not None
+                and cache.query == search_key
+                and (now - cache.cached_at) < (CACHE_MINUTES * 60)
             )
 
-        _photo_words = ("photo", "photos", "picture", "pictures",
-                        "image", "images", "show me")
-        if any(w in query.lower() for w in _photo_words):
-            extra = self._photo_lookup(session.job_context or query)
-            seen = {m["url"] for m in media_links}
-            media_links = media_links + [m for m in extra if m["url"] not in seen]
+            if cache_age_ok:
+                print(f"[Cache] Reusing Vertex results from {int(now - cache.cached_at)}s ago")
+                excerpts    = cache.excerpts
+                media_links = cache.media_links
+                source_uris = cache.source_uris
+            else:
+                excerpts, media_links, source_uris = self.retrieve(
+                    query, job_context=session.job_context)
+                session.last_search = CachedSearch(
+                    query=search_key,
+                    excerpts=excerpts,
+                    media_links=media_links,
+                    source_uris=source_uris,
+                    cached_at=now,
+                )
+                # Fresh search → reset pagination
+                session.page_offset = 0
 
-        answer = self.synthesize(query, excerpts, session, media_links=media_links)
+            _photo_words = ("photo", "photos", "picture", "pictures",
+                            "image", "images", "show me")
+            if any(w in query.lower() for w in _photo_words):
+                extra = self._photo_lookup(session.job_context or query)
+                seen = {m["url"] for m in media_links}
+                media_links = media_links + [m for m in extra if m["url"] not in seen]
+
+        answer = self.synthesize(
+            query, excerpts, session,
+            media_links=media_links,
+            page_offset=session.page_offset,
+        )
 
         session.history.append(ChatMessage(role="user",  text=query))
         session.history.append(ChatMessage(role="model", text=answer))
@@ -598,6 +652,23 @@ class JobIntelligence:
         )
         confidence = _score_confidence(len(excerpts), has_direct)
         followups  = _suggest_followups(query, session.job_context)
+
+        # Add "Show more" suggestion if results were truncated
+        q_lower_for_limit = (
+            session.last_search.query.lower() if session.last_search else query.lower()
+        )
+        cached_is_list = any(p in q_lower_for_limit for p in [
+            "list all", "list every", "all properties", "all documents",
+            "all jobs", "show me all", "show all", "every property",
+            "every job", "portfolio", "what properties", "which properties",
+            "what documents do we have"
+        ])
+        page_size_used = MAX_SEGMENTS_LIST if cached_is_list else MAX_SEGMENTS
+        shown_so_far = session.page_offset + page_size_used
+        if shown_so_far < len(excerpts):
+            followups = [f"Show more results ({len(excerpts) - shown_so_far} remaining)"] + followups
+            followups = followups[:3]
+
         sources    = list({exc["source"] for exc in excerpts})
 
         return IntelligenceResponse(
